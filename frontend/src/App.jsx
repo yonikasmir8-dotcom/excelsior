@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { SignedIn, SignedOut, useAuth } from '@clerk/react'
+import { SignedIn, SignedOut, useAuth } from '@clerk/clerk-react'
 import AuthPage from './AuthPage.jsx'
 import AliasSetup from './AliasSetup.jsx'
 import MainApp from './MainApp.jsx'

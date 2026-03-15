@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useAuth, UserButton } from '@clerk/react'
+import { useAuth, UserButton } from '@clerk/clerk-react'
 import { api, social } from './api.js'
 import ComicModal from './ComicModal.jsx'
 import DetailModal from './DetailModal.jsx'
