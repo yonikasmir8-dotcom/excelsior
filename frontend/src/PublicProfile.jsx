@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useAuth } from '@clerk/clerk-react'
+import { useAuth } from '@clerk/react'
 import { social } from './api.js'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'

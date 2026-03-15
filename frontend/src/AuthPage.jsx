@@ -1,4 +1,4 @@
-import { SignIn, SignUp } from '@clerk/clerk-react'
+import { SignIn, SignUp } from '@clerk/react'
 import { useState } from 'react'
 
 export default function AuthPage() {
