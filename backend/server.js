@@ -163,9 +163,14 @@ const withAlias = (rows) => rows.map(row => {
 // clerkMiddleware() is applied globally above; getAuth(req) extracts userId
 // For API routes, we use a simple middleware that returns 401 instead of redirecting
 const apiAuth = (req, res, next) => {
-  const { userId } = getAuth(req);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
-  next();
+  try {
+    const auth = getAuth(req);
+    if (!auth || !auth.userId) return res.status(401).json({ error: 'Unauthorized' });
+    next();
+  } catch (e) {
+    console.error('Auth error:', e.message);
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
 };
 
 // ── Catalog search ───────────────────────────────────────────────────────────
