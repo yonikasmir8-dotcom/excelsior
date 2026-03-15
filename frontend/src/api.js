@@ -32,14 +32,21 @@ export const api = {
     mine:   (gt)           => req('/alias/mine', gt),
     set:    (gt, alias)    => req('/alias', gt, { method: 'POST', body: JSON.stringify({ alias }) }),
     check:  (alias)        => fetch(`${BASE}/alias/check/${alias}`).then(r => r.json()),
-  }
+  },
+  catalog: {
+    search: (q) => fetch(`${BASE}/catalog/search?q=${encodeURIComponent(q)}`).then(r => r.json()),
+    get:    (id) => fetch(`${BASE}/catalog/${id}`).then(r => r.json()),
+    ratings:(id) => fetch(`${BASE}/catalog/${id}/ratings`).then(r => r.json()),
+  },
+  tags: () => fetch(`${BASE}/tags`).then(r => r.json()),
+  similarRaters: (gt) => req('/similar-raters', gt),
 }
 
 // Open Library cover lookup (free, commercial-friendly)
 export async function fetchCoverImage(title, author = '') {
   try {
     const q = encodeURIComponent(`${title} ${author} comic`.trim())
-    const res = await fetch(`https://openlibrary.org/search.json?q=${q}&fields=cover_i,title&limit=3`)
+    const res = await fetch(`https://openlibrary.org/search.json?q=${q}&fields=cover_i,title&limit=5`)
     const data = await res.json()
     const hit = data.docs?.find(d => d.cover_i)
     if (hit?.cover_i) return `https://covers.openlibrary.org/b/id/${hit.cover_i}-L.jpg`

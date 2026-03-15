@@ -305,7 +305,7 @@ export default function MainApp({ alias }) {
                       {[c.writer && `W: ${c.writer}`, c.artist && `A: ${c.artist}`].filter(Boolean).join('  ·  ')}
                     </div>
                   )}
-                  {c.rating > 0 && <div style={{ display: 'flex', gap: '2px' }}>{[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '0.78rem', color: n <= c.rating ? 'var(--yellow)' : 'var(--border)' }}>★</span>)}</div>}
+                  {c.rating > 0 && <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>{[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '0.78rem', color: n <= Math.round(c.rating) ? 'var(--yellow)' : 'var(--border)' }}>★</span>)}<span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.62rem', color: 'var(--muted)', marginLeft: '0.25rem' }}>{c.rating}</span></div>}
                   {c.review && !isMobile && (
                     <div style={{ fontSize: '0.78rem', color: '#888', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontStyle: 'italic' }}>{c.review}</div>
                   )}
@@ -358,7 +358,7 @@ export default function MainApp({ alias }) {
                       <div style={{ position: 'absolute', bottom: 4, right: 4, background: SHELF_COLOR[c.shelf], color: 'var(--white)', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: '0.46rem', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.12rem 0.32rem', borderRadius: '2px' }}>{SHELF_LABEL[c.shelf]}</div>
                     </div>
                     <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, fontSize: isMobile ? '0.75rem' : '0.82rem', marginTop: '0.45rem', lineHeight: 1.2, color: 'var(--white)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</div>
-                    {c.rating > 0 && <div style={{ display: 'flex', gap: '1px', marginTop: '0.2rem' }}>{[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '0.62rem', color: n <= c.rating ? 'var(--yellow)' : 'var(--border)' }}>★</span>)}</div>}
+                    {c.rating > 0 && <div style={{ display: 'flex', gap: '1px', marginTop: '0.2rem', alignItems: 'center' }}>{[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '0.62rem', color: n <= Math.round(c.rating) ? 'var(--yellow)' : 'var(--border)' }}>★</span>)}<span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.5rem', color: 'var(--muted)', marginLeft: '0.15rem' }}>{c.rating}</span></div>}
                   </div>
                 ))}
               </div>
@@ -389,6 +389,23 @@ export default function MainApp({ alias }) {
                 </div>
               ))}
             </div>
+
+            {/* Category Rating Averages */}
+            {(stats.avg_plot || stats.avg_art || stats.avg_writing) && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1px', background: 'var(--border)', border: '2px solid var(--border)', borderRadius: '4px', overflow: 'hidden', marginBottom: '1.5rem' }}>
+                {[
+                  { num: stats.avg_plot ?? '—', label: 'Avg Plot', icon: '📖' },
+                  { num: stats.avg_art ?? '—', label: 'Avg Art', icon: '🎨' },
+                  { num: stats.avg_writing ?? '—', label: 'Avg Writing', icon: '✍️' },
+                ].map(({ num, label, icon }) => (
+                  <div key={label} style={{ background: 'var(--panel)', padding: isMobile ? '0.9rem 0.75rem' : '1.25rem 1rem', textAlign: 'center' }}>
+                    <div style={{ fontSize: '1rem', marginBottom: '0.2rem' }}>{icon}</div>
+                    <div style={{ fontFamily: "'Bangers', cursive", fontSize: isMobile ? '1.4rem' : '1.8rem', color: 'var(--yellow)', lineHeight: 1 }}>{num}</div>
+                    <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.52rem', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--muted)', marginTop: '0.15rem' }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {stats.top_publisher && (
               <div style={{ background: 'var(--panel)', border: '2px solid var(--border)', borderLeft: '4px solid var(--yellow)', borderRadius: '3px', padding: '1.1rem 1.25rem', marginBottom: '0.75rem' }}>

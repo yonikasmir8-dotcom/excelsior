@@ -1,8 +1,18 @@
-import { amazonUrl } from './api.js'
+import { useState, useEffect } from 'react'
+import { amazonUrl, api } from './api.js'
 
 const SHELF_LABEL = { read: 'Read', reading: 'Currently Reading', want: 'Want to Read' }
 const SHELF_COLOR = { read: 'var(--red)', reading: 'var(--blue)', want: 'var(--border)' }
 const halftone = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Ccircle cx='3' cy='3' r='0.9' fill='rgba(255,255,255,0.03)'/%3E%3C/svg%3E")`
+const catLbl = { fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--muted)' }
+
+function MiniStars({ value, size = '0.75rem' }) {
+  return (
+    <span style={{ display: 'inline-flex', gap: '1px' }}>
+      {[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: size, color: n <= value ? 'var(--yellow)' : 'var(--border)', lineHeight: 1 }}>★</span>)}
+    </span>
+  )
+}
 
 export default function DetailModal({ comic, onClose, onEdit, onDelete }) {
   if (!comic) return null
@@ -10,6 +20,18 @@ export default function DetailModal({ comic, onClose, onEdit, onDelete }) {
   const dateStr = comic.date_read
     ? new Date(comic.date_read + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
     : null
+
+  // Universal ratings from community
+  const [universalRatings, setUniversalRatings] = useState(null)
+  useEffect(() => {
+    if (comic.catalog_id) {
+      api.catalog.ratings(comic.catalog_id).then(setUniversalRatings).catch(() => {})
+    }
+  }, [comic.catalog_id])
+
+  // Compute overall from sub-ratings
+  const rated = [comic.rating_plot, comic.rating_art, comic.rating_writing].filter(r => r > 0)
+  const overallRating = comic.rating > 0 ? comic.rating : (rated.length ? +(rated.reduce((a,b)=>a+b,0)/rated.length).toFixed(1) : 0)
 
   return (
     <div style={{
@@ -64,11 +86,6 @@ export default function DetailModal({ comic, onClose, onEdit, onDelete }) {
                   {comic.artist && <div><span style={{ color: 'var(--muted)' }}>A: </span>{comic.artist}</div>}
                 </div>
               )}
-              {comic.rating > 0 && (
-                <div style={{ display: 'flex', gap: '2px', marginTop: '0.45rem' }}>
-                  {[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '1rem', color: n <= comic.rating ? 'var(--yellow)' : 'var(--border)' }}>★</span>)}
-                </div>
-              )}
               {dateStr && <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.6rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.4rem' }}>Read {dateStr}</div>}
               <div style={{ display: 'inline-block', marginTop: '0.4rem', background: SHELF_COLOR[comic.shelf], color: 'var(--white)', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.18rem 0.5rem', borderRadius: '2px' }}>
                 {SHELF_LABEL[comic.shelf]}
@@ -81,6 +98,59 @@ export default function DetailModal({ comic, onClose, onEdit, onDelete }) {
             </div>
           </div>
 
+          {/* Ratings breakdown */}
+          {(comic.rating_plot > 0 || comic.rating_art > 0 || comic.rating_writing > 0 || overallRating > 0) && (
+            <div style={{ background: 'var(--mid)', border: '1px solid var(--border)', borderRadius: '4px', padding: '0.75rem 1rem', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <span style={{ ...catLbl, fontWeight: 700 }}>Your Rating</span>
+                {overallRating > 0 && (
+                  <span style={{ fontFamily: "'Bangers', cursive", fontSize: '1.1rem', color: 'var(--yellow)' }}>
+                    {overallRating} ★
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                {comic.rating_plot > 0 && (
+                  <div><span style={catLbl}>Plot </span><MiniStars value={comic.rating_plot} /></div>
+                )}
+                {comic.rating_art > 0 && (
+                  <div><span style={catLbl}>Art </span><MiniStars value={comic.rating_art} /></div>
+                )}
+                {comic.rating_writing > 0 && (
+                  <div><span style={catLbl}>Writing </span><MiniStars value={comic.rating_writing} /></div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Universal / Community ratings */}
+          {universalRatings && universalRatings.count > 0 && (
+            <div style={{ background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '4px', padding: '0.75rem 1rem', marginBottom: '1.25rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <span style={{ ...catLbl, fontWeight: 700 }}>Community Rating</span>
+                <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.62rem', color: 'var(--muted)' }}>
+                  {universalRatings.count} {universalRatings.count === 1 ? 'reader' : 'readers'}
+                </span>
+              </div>
+              {universalRatings.avg_overall && (
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: '1.2rem', color: 'var(--yellow)', marginBottom: '0.3rem' }}>
+                  {universalRatings.avg_overall} ★
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                {universalRatings.avg_plot && (
+                  <div><span style={catLbl}>Plot </span><span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem', color: 'var(--yellow)' }}>{universalRatings.avg_plot}★</span></div>
+                )}
+                {universalRatings.avg_art && (
+                  <div><span style={catLbl}>Art </span><span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem', color: 'var(--yellow)' }}>{universalRatings.avg_art}★</span></div>
+                )}
+                {universalRatings.avg_writing && (
+                  <div><span style={catLbl}>Writing </span><span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem', color: 'var(--yellow)' }}>{universalRatings.avg_writing}★</span></div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Review */}
           {comic.review && (
             <blockquote style={{ fontStyle: 'italic', fontSize: '0.84rem', color: 'var(--light)', lineHeight: 1.6, padding: '0.85rem 1rem', background: 'var(--mid)', borderLeft: '3px solid var(--red)', borderRadius: '0 3px 3px 0', marginBottom: '1.25rem' }}>
@@ -88,7 +158,7 @@ export default function DetailModal({ comic, onClose, onEdit, onDelete }) {
             </blockquote>
           )}
 
-          {/* Amazon buy button — full width on mobile */}
+          {/* Amazon buy button */}
           <a href={buyUrl} target="_blank" rel="noopener noreferrer" style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem',
             width: '100%', background: '#ff9900', color: 'var(--ink)',

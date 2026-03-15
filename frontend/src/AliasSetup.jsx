@@ -8,7 +8,7 @@ const ALIASES = [
   'XManiac','ThanosFan','VenomVault','GreenArrow','FlashCollector',
 ]
 
-export default function AliasSetup({ onComplete }) {
+export default function AliasSetup({ onComplete, onSkip }) {
   const { getToken } = useAuth()
   const { user } = useUser()
   const [alias, setAlias] = useState('')
@@ -141,7 +141,7 @@ export default function AliasSetup({ onComplete }) {
         </button>
 
         <div style={{ marginTop:'1.25rem', textAlign:'center' }}>
-          <button onClick={onComplete} style={{
+          <button onClick={onSkip || onComplete} style={{
             background:'none', border:'none', color:'var(--muted)',
             fontFamily:"'Barlow Condensed', sans-serif", fontSize:'0.7rem',
             letterSpacing:'0.08em', textTransform:'uppercase', cursor:'pointer',

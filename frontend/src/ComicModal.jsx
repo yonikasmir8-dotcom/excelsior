@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react'
-import { fetchCoverImage, amazonUrl } from './api.js'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { fetchCoverImage, amazonUrl, api } from './api.js'
 
 const COLORS = [
   { label: 'Crimson',       value: '#b30000' },
@@ -23,44 +23,164 @@ const lbl = {
   letterSpacing: '0.1em', color: 'var(--muted)', marginBottom: '0.35rem',
 }
 
+function StarRow({ label, value, hover, onHover, onLeave, onChange, onClear }) {
+  return (
+    <div style={{ marginBottom: '0.5rem' }}>
+      <label style={{ ...lbl, marginBottom: '0.2rem' }}>{label}</label>
+      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onMouseLeave={onLeave}>
+        {[1,2,3,4,5].map(n => (
+          <span key={n}
+            onMouseEnter={() => onHover(n)}
+            onClick={() => onChange(n)}
+            style={{ fontSize: '1.3rem', cursor: 'pointer', color: n <= (hover || value) ? 'var(--yellow)' : 'var(--border)', transition: 'color 0.1s', WebkitTapHighlightColor: 'transparent', lineHeight: 1 }}>★</span>
+        ))}
+        {value > 0 && (
+          <button onClick={onClear} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem', letterSpacing: '0.06em', textTransform: 'uppercase', paddingLeft: '0.3rem', minHeight: 'unset' }}>✕</button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function ComicModal({ initial = null, onSave, onClose, onDelete }) {
   const isEdit = !!initial
   const [form, setForm] = useState({
-    title:       initial?.title       || '',
-    publisher:   initial?.publisher   || '',
-    writer:      initial?.writer      || '',
-    artist:      initial?.artist      || '',
-    issue_num:   initial?.issue_num   || '',
-    shelf:       initial?.shelf       || 'read',
-    rating:      initial?.rating      || 0,
-    date_read:   initial?.date_read   || new Date().toISOString().split('T')[0],
-    review:      initial?.review      || '',
-    tags:        initial?.tags?.join(', ') || '',
-    cover_color: initial?.cover_color || '#b30000',
-    cover_image: initial?.cover_image || '',
-    amazon_url:  initial?.amazon_url  || '',
+    title:          initial?.title          || '',
+    publisher:      initial?.publisher      || '',
+    writer:         initial?.writer         || '',
+    artist:         initial?.artist         || '',
+    issue_num:      initial?.issue_num      || '',
+    shelf:          initial?.shelf          || 'read',
+    rating_plot:    initial?.rating_plot    || 0,
+    rating_art:     initial?.rating_art     || 0,
+    rating_writing: initial?.rating_writing || 0,
+    date_read:      initial?.date_read      || new Date().toISOString().split('T')[0],
+    review:         initial?.review         || '',
+    tags:           initial?.tags           || [],
+    cover_color:    initial?.cover_color    || '#b30000',
+    cover_image:    initial?.cover_image    || '',
+    amazon_url:     initial?.amazon_url     || '',
+    catalog_id:     initial?.catalog_id     || null,
   })
-  const [hoverStar, setHoverStar] = useState(0)
-  const [fetching, setFetching]   = useState(false)
-  const [fetchMsg, setFetchMsg]   = useState('')
-  const [saving, setSaving]       = useState(false)
-  const [error, setError]         = useState('')
-  const debounceRef = useRef(null)
+
+  const [hoverPlot, setHoverPlot]       = useState(0)
+  const [hoverArt, setHoverArt]         = useState(0)
+  const [hoverWriting, setHoverWriting] = useState(0)
+  const [fetching, setFetching]         = useState(false)
+  const [fetchMsg, setFetchMsg]         = useState('')
+  const [saving, setSaving]             = useState(false)
+  const [error, setError]               = useState('')
+
+  // Catalog search
+  const [searchResults, setSearchResults] = useState([])
+  const [showResults, setShowResults]     = useState(false)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const searchRef = useRef(null)
+  const dropdownRef = useRef(null)
+
+  // Tags
+  const [allTags, setAllTags]       = useState([])
+  const [tagInput, setTagInput]     = useState('')
+  const [tagSuggestions, setTagSuggestions] = useState([])
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false)
+
+  // Load predefined tags on mount
+  useEffect(() => {
+    api.tags().then(setAllTags).catch(() => {})
+  }, [])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
-  const handleTitleChange = (val) => {
+  // Catalog search with debounce
+  const handleTitleChange = useCallback((val) => {
     set('title', val)
-    clearTimeout(debounceRef.current)
-    if (val.length < 3) return
-    debounceRef.current = setTimeout(async () => {
+    clearTimeout(searchRef.current)
+    if (val.length < 2) { setSearchResults([]); setShowResults(false); return }
+    setSearchLoading(true)
+    searchRef.current = setTimeout(async () => {
+      try {
+        const results = await api.catalog.search(val)
+        setSearchResults(results)
+        setShowResults(results.length > 0)
+      } catch { setSearchResults([]) }
+      setSearchLoading(false)
+    }, 400)
+  }, [])
+
+  // Select from catalog → auto-fill everything
+  const selectCatalog = (entry) => {
+    setForm(f => ({
+      ...f,
+      title: entry.title,
+      issue_num: entry.issue_num || f.issue_num,
+      publisher: entry.publisher || f.publisher,
+      writer: entry.writer || f.writer,
+      artist: entry.artist || f.artist,
+      cover_image: entry.cover_image || f.cover_image,
+      catalog_id: entry.id,
+      tags: entry.tags ? entry.tags.split(',').map(t => t.trim()).filter(Boolean) : f.tags,
+    }))
+    setShowResults(false)
+
+    // If catalog has no cover, try Open Library
+    if (!entry.cover_image) {
       setFetching(true); setFetchMsg('Looking up cover…')
-      const img = await fetchCoverImage(val, form.publisher)
-      if (img) { set('cover_image', img); setFetchMsg('✓ Cover found!') }
-      else setFetchMsg('No cover found — colour used instead')
-      setFetching(false)
-    }, 900)
+      fetchCoverImage(entry.title, entry.publisher).then(img => {
+        if (img) { set('cover_image', img); setFetchMsg('✓ Cover found!') }
+        else setFetchMsg('No cover found — colour used instead')
+        setFetching(false)
+      })
+    } else {
+      setFetchMsg('✓ Cover loaded from catalog')
+    }
   }
+
+  // Manual title (no catalog match) — try cover lookup
+  const handleTitleBlur = () => {
+    setTimeout(() => setShowResults(false), 200)
+    if (!form.catalog_id && form.title.length >= 3 && !form.cover_image) {
+      setFetching(true); setFetchMsg('Looking up cover…')
+      fetchCoverImage(form.title, form.publisher).then(img => {
+        if (img) { set('cover_image', img); setFetchMsg('✓ Cover found!') }
+        else setFetchMsg('No cover found — colour used instead')
+        setFetching(false)
+      })
+    }
+  }
+
+  // Tag handling
+  const addTag = (tag) => {
+    const clean = tag.toLowerCase().trim()
+    if (clean && !form.tags.includes(clean)) {
+      set('tags', [...form.tags, clean])
+    }
+    setTagInput('')
+    setShowTagSuggestions(false)
+  }
+  const removeTag = (tag) => set('tags', form.tags.filter(t => t !== tag))
+
+  const handleTagInputChange = (val) => {
+    setTagInput(val)
+    if (val.length > 0) {
+      const matches = allTags.filter(t => t.includes(val.toLowerCase()) && !form.tags.includes(t))
+      setTagSuggestions(matches.slice(0, 8))
+      setShowTagSuggestions(matches.length > 0)
+    } else {
+      // Show all unselected tags when input is focused and empty
+      setTagSuggestions(allTags.filter(t => !form.tags.includes(t)).slice(0, 12))
+      setShowTagSuggestions(true)
+    }
+  }
+  const handleTagKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      if (tagInput.trim()) addTag(tagInput)
+    }
+  }
+
+  // Computed overall rating for display
+  const rated = [form.rating_plot, form.rating_art, form.rating_writing].filter(r => r > 0)
+  const overallRating = rated.length ? +(rated.reduce((a,b)=>a+b,0) / rated.length).toFixed(1) : 0
 
   const handleSave = async () => {
     if (!form.title.trim()) { setError('Title is required'); return }
@@ -68,9 +188,7 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
     try {
       await onSave({
         ...form,
-        tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
         amazon_url: form.amazon_url || amazonUrl(form.title, form.publisher),
-        rating: Number(form.rating),
       })
     } catch (e) { setError(e.message); setSaving(false) }
   }
@@ -82,7 +200,6 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
       backdropFilter: 'blur(4px)', padding: 0,
     }} onClick={e => e.target === e.currentTarget && onClose()}>
 
-      {/* Sheet slides up from bottom — feels native on mobile */}
       <div className="anim-pop" style={{
         background: 'var(--panel)', borderTop: '4px solid var(--red)',
         borderRadius: '12px 12px 0 0',
@@ -106,7 +223,7 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
 
         <div style={{ padding: '1.25rem' }}>
 
-          {/* Cover preview + title block */}
+          {/* Cover preview + title/search block */}
           <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.1rem', alignItems: 'flex-start' }}>
             <div style={{
               width: '72px', height: '100px', borderRadius: '2px', flexShrink: 0,
@@ -121,11 +238,56 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
               }
               {fetching && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⏳</div>}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
               <div style={{ marginBottom: '0.75rem' }}>
-                <label style={lbl}>Title *</label>
-                <input style={inp} value={form.title} onChange={e => handleTitleChange(e.target.value)} placeholder="Series or issue title" />
+                <label style={lbl}>Search Comics *</label>
+                <input
+                  style={inp}
+                  value={form.title}
+                  onChange={e => handleTitleChange(e.target.value)}
+                  onBlur={handleTitleBlur}
+                  onFocus={() => searchResults.length > 0 && setShowResults(true)}
+                  placeholder="Start typing a title…"
+                  autoFocus={!isEdit}
+                />
+                {searchLoading && <p style={{ ...lbl, color: 'var(--muted)', marginTop: '0.2rem' }}>Searching catalog…</p>}
                 {fetchMsg && <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.62rem', color: fetchMsg.startsWith('✓') ? '#2a9d4e' : 'var(--muted)', marginTop: '0.25rem', letterSpacing: '0.05em' }}>{fetchMsg}</p>}
+
+                {/* Catalog search dropdown */}
+                {showResults && searchResults.length > 0 && (
+                  <div ref={dropdownRef} style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60,
+                    background: 'var(--dark)', border: '2px solid var(--border)', borderRadius: '3px',
+                    maxHeight: '220px', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                  }}>
+                    {searchResults.map((r, i) => (
+                      <button key={r.id || i}
+                        onMouseDown={e => { e.preventDefault(); selectCatalog(r) }}
+                        style={{
+                          display: 'flex', gap: '0.6rem', alignItems: 'center',
+                          width: '100%', background: 'none', border: 'none', borderBottom: '1px solid var(--border)',
+                          padding: '0.55rem 0.75rem', cursor: 'pointer', textAlign: 'left', minHeight: 'unset',
+                          color: 'var(--white)',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--mid)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                      >
+                        {r.cover_image
+                          ? <img src={r.cover_image} alt="" style={{ width: '28px', height: '40px', objectFit: 'cover', borderRadius: '2px', flexShrink: 0 }} />
+                          : <div style={{ width: '28px', height: '40px', background: 'var(--border)', borderRadius: '2px', flexShrink: 0 }} />
+                        }
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.82rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {r.title}{r.issue_num ? ` #${r.issue_num}` : ''}
+                          </div>
+                          <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.62rem', color: 'var(--muted)' }}>
+                            {[r.publisher, r.writer].filter(Boolean).join(' · ')}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', gap: '0.75rem' }}>
                 <div style={{ flex: 1 }}>
@@ -144,13 +306,13 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
             </div>
           </div>
 
-          {/* Publisher + Date — responsive 2-col */}
+          {/* Publisher + Date */}
           <div className="form-row-2">
             <div>
               <label style={lbl}>Publisher</label>
               <input style={inp} value={form.publisher} onChange={e => set('publisher', e.target.value)} placeholder="Marvel, DC, Image…" list="pubs" />
               <datalist id="pubs">
-                {['Marvel Comics','DC Comics','Image Comics','Dark Horse Comics','IDW Publishing','BOOM! Studios','Fantagraphics'].map(p => <option key={p} value={p} />)}
+                {['Marvel Comics','DC Comics','Image Comics','Dark Horse Comics','IDW Publishing','BOOM! Studios','Fantagraphics','Kodansha','Shueisha','Valiant Comics'].map(p => <option key={p} value={p} />)}
               </datalist>
             </div>
             <div>
@@ -171,20 +333,25 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
             </div>
           </div>
 
-          {/* Star rating */}
-          <div style={{ marginBottom: '1rem' }}>
-            <label style={lbl}>Rating</label>
-            <div style={{ display: 'flex', gap: '8px' }} onMouseLeave={() => setHoverStar(0)}>
-              {[1,2,3,4,5].map(n => (
-                <span key={n}
-                  onMouseEnter={() => setHoverStar(n)}
-                  onClick={() => set('rating', n)}
-                  style={{ fontSize: '1.8rem', cursor: 'pointer', color: n <= (hoverStar || form.rating) ? 'var(--yellow)' : 'var(--border)', transition: 'color 0.1s', WebkitTapHighlightColor: 'transparent' }}>★</span>
-              ))}
-              {form.rating > 0 && (
-                <button onClick={() => set('rating', 0)} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.65rem', letterSpacing: '0.06em', textTransform: 'uppercase', paddingLeft: '0.5rem', minHeight: 'unset' }}>clear</button>
+          {/* 3-Category Star Ratings */}
+          <div style={{ marginBottom: '0.75rem', padding: '0.75rem', background: 'var(--mid)', borderRadius: '4px', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <label style={{ ...lbl, marginBottom: 0 }}>Ratings</label>
+              {overallRating > 0 && (
+                <span style={{ fontFamily: "'Bangers', cursive", fontSize: '1rem', color: 'var(--yellow)' }}>
+                  {overallRating} ★
+                </span>
               )}
             </div>
+            <StarRow label="Plot" value={form.rating_plot} hover={hoverPlot}
+              onHover={setHoverPlot} onLeave={() => setHoverPlot(0)}
+              onChange={v => set('rating_plot', v)} onClear={() => set('rating_plot', 0)} />
+            <StarRow label="Art" value={form.rating_art} hover={hoverArt}
+              onHover={setHoverArt} onLeave={() => setHoverArt(0)}
+              onChange={v => set('rating_art', v)} onClear={() => set('rating_art', 0)} />
+            <StarRow label="Writing" value={form.rating_writing} hover={hoverWriting}
+              onHover={setHoverWriting} onLeave={() => setHoverWriting(0)}
+              onChange={v => set('rating_writing', v)} onClear={() => set('rating_writing', 0)} />
           </div>
 
           {/* Review */}
@@ -195,18 +362,67 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
               placeholder="What did you think?" />
           </div>
 
-          {/* Tags + Cover colour */}
-          <div className="form-row-2">
-            <div>
-              <label style={lbl}>Tags (comma separated)</label>
-              <input style={inp} value={form.tags} onChange={e => set('tags', e.target.value)} placeholder="superhero, noir…" />
-            </div>
-            <div>
-              <label style={lbl}>Cover Colour (fallback)</label>
-              <select style={inp} value={form.cover_color} onChange={e => set('cover_color', e.target.value)}>
-                {COLORS.map(c => <option key={c.value} value={c.value} style={{ background: 'var(--panel)' }}>{c.label}</option>)}
-              </select>
-            </div>
+          {/* Tags — chip selector + autocomplete */}
+          <div style={{ marginBottom: '1rem', position: 'relative' }}>
+            <label style={lbl}>Tags</label>
+            {/* Selected tags as chips */}
+            {form.tags.length > 0 && (
+              <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
+                {form.tags.map(tag => (
+                  <span key={tag} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                    background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '3px',
+                    padding: '0.2rem 0.5rem', fontFamily: "'Barlow Condensed', sans-serif",
+                    fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--light)',
+                  }}>
+                    {tag}
+                    <button onClick={() => removeTag(tag)} style={{
+                      background: 'none', border: 'none', color: 'var(--muted)', fontSize: '0.7rem',
+                      padding: 0, minHeight: 'unset', cursor: 'pointer', lineHeight: 1,
+                    }}>✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <input
+              style={inp}
+              value={tagInput}
+              onChange={e => handleTagInputChange(e.target.value)}
+              onKeyDown={handleTagKeyDown}
+              onFocus={() => handleTagInputChange(tagInput)}
+              onBlur={() => setTimeout(() => setShowTagSuggestions(false), 150)}
+              placeholder="Type or select tags…"
+            />
+            {showTagSuggestions && tagSuggestions.length > 0 && (
+              <div style={{
+                position: 'absolute', left: 0, right: 0, zIndex: 50,
+                background: 'var(--dark)', border: '2px solid var(--border)', borderRadius: '3px',
+                maxHeight: '140px', overflowY: 'auto', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+              }}>
+                {tagSuggestions.map(tag => (
+                  <button key={tag}
+                    onMouseDown={e => { e.preventDefault(); addTag(tag) }}
+                    style={{
+                      display: 'block', width: '100%', background: 'none', border: 'none',
+                      borderBottom: '1px solid var(--border)', padding: '0.45rem 0.75rem',
+                      textAlign: 'left', cursor: 'pointer', minHeight: 'unset',
+                      fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem',
+                      textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--light)',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--mid)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                  >{tag}</button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Cover colour fallback */}
+          <div style={{ marginBottom: '1rem' }}>
+            <label style={lbl}>Cover Colour (fallback)</label>
+            <select style={inp} value={form.cover_color} onChange={e => set('cover_color', e.target.value)}>
+              {COLORS.map(c => <option key={c.value} value={c.value} style={{ background: 'var(--panel)' }}>{c.label}</option>)}
+            </select>
           </div>
 
           {error && <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem', color: 'var(--red)', marginBottom: '0.75rem', letterSpacing: '0.06em' }}>{error}</p>}

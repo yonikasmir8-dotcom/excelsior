@@ -38,10 +38,11 @@ function CoverCard({ comic, size = [90, 126] }) {
 function Stars({ rating }) {
   if (!rating) return null
   return (
-    <div style={{ display: 'flex', gap: '1px' }}>
+    <div style={{ display: 'flex', gap: '1px', alignItems: 'center' }}>
       {[1,2,3,4,5].map(n => (
-        <span key={n} style={{ fontSize: '0.75rem', color: n <= rating ? 'var(--yellow)' : 'var(--border)' }}>★</span>
+        <span key={n} style={{ fontSize: '0.75rem', color: n <= Math.round(rating) ? 'var(--yellow)' : 'var(--border)' }}>★</span>
       ))}
+      {rating % 1 !== 0 && <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem', color: 'var(--muted)', marginLeft: '0.2rem' }}>{rating}</span>}
     </div>
   )
 }
@@ -186,6 +187,21 @@ export default function PublicProfile({ alias }) {
               </div>
             </div>
 
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            {/* Follow/Unfollow button */}
+            {!data.is_own_profile && (
+              <button onClick={handleFollow} disabled={followLoading} style={{
+                background: following ? 'var(--mid)' : 'var(--red)',
+                border: following ? '2px solid var(--border)' : 'none',
+                borderBottom: following ? '2px solid var(--border)' : '3px solid var(--red-dark)',
+                color: 'var(--white)',
+                fontFamily: "'Bangers', cursive", fontSize: '1rem', letterSpacing: '0.06em',
+                padding: '0.6rem 1.5rem', borderRadius: '3px', cursor: 'pointer',
+                transition: 'all 0.2s', opacity: followLoading ? 0.6 : 1,
+              }}>
+                {followLoading ? '…' : following ? 'Following ✓' : 'Follow'}
+              </button>
+            )}
             {/* Share button */}
             <button onClick={copyLink} style={{
               background: copied ? 'var(--green)' : 'var(--mid)',
@@ -198,6 +214,7 @@ export default function PublicProfile({ alias }) {
             }}>
               {copied ? '✓ Link Copied!' : '⎘ Share Profile'}
             </button>
+            </div>
           </div>
 
           {/* Stats strip */}
@@ -255,7 +272,7 @@ export default function PublicProfile({ alias }) {
 
         {/* Five-star favourites */}
         {favourites.length > 0 && (
-          <Section title="Five-Star Favourites" subtitle="The absolute best" accent="var(--yellow)">
+          <Section title="Top Rated" subtitle="The absolute best" accent="var(--yellow)">
             <div style={{ display: 'flex', gap: '1.1rem', flexWrap: 'wrap' }}>
               {favourites.map(c => (
                 <div key={c.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', width: 'clamp(75px, 18vw, 90px)' }}>
