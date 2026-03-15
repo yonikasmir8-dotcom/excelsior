@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const Database = require('better-sqlite3');
-const { ClerkExpressRequireAuth, ClerkExpressWithAuth } = require('@clerk/clerk-sdk-node');
+const { clerkMiddleware, requireAuth, getAuth } = require('@clerk/express');
 const path = require('path');
 const fs = require('fs');
 
@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 3001;
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
 app.use(express.json());
+app.use(clerkMiddleware());
 
 // ── Database ──────────────────────────────────────────────────────────────────
 const db = new Database(path.join(__dirname, 'excelsior.db'));
@@ -159,8 +160,8 @@ const withAlias = (rows) => rows.map(row => {
 });
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
-const requireAuth = ClerkExpressRequireAuth();
-const withAuth    = ClerkExpressWithAuth();
+// clerkMiddleware() is applied globally above
+// requireAuth() is used per-route, getAuth(req) extracts userId
 
 // ── Catalog search ───────────────────────────────────────────────────────────
 app.get('/api/catalog/search', (req, res) => {
@@ -232,7 +233,7 @@ app.get('/api/catalog/:id/ratings', (req, res) => {
 
 // ── Similar raters ───────────────────────────────────────────────────────────
 app.get('/api/similar-raters', requireAuth, (req, res) => {
-  const me = req.auth.userId;
+  const me = getAuth(req).userId;
 
   // Get my ratings keyed by catalog_id
   const myRatings = db.prepare(`
@@ -294,7 +295,7 @@ app.get('/api/alias/check/:alias', (req, res) => {
 });
 
 app.post('/api/alias', requireAuth, (req, res) => {
-  const userId = req.auth.userId;
+  const userId = getAuth(req).userId;
   const { alias } = req.body;
   if (!alias || alias.length < 2 || alias.length > 30)
     return res.status(400).json({ error: 'Alias must be 2–30 characters' });
@@ -308,7 +309,7 @@ app.post('/api/alias', requireAuth, (req, res) => {
 });
 
 app.get('/api/alias/mine', requireAuth, (req, res) => {
-  const row = db.prepare('SELECT alias FROM alias WHERE user_id = ?').get(req.auth.userId);
+  const row = db.prepare('SELECT alias FROM alias WHERE user_id = ?').get(getAuth(req).userId);
   res.json({ alias: row?.alias || null });
 });
 
@@ -317,7 +318,7 @@ app.get('/api/comics', requireAuth, (req, res) => {
   const { shelf, sort = 'created_at', order = 'desc' } = req.query;
   const safeSort  = ['created_at','date_read','title','rating'].includes(sort) ? sort : 'created_at';
   const safeOrder = ['asc','desc'].includes(order) ? order : 'desc';
-  const uid = req.auth.userId;
+  const uid = getAuth(req).userId;
   if (shelf && ['read','reading','want'].includes(shelf)) {
     return res.json(
       db.prepare(`SELECT * FROM comics WHERE user_id=? AND shelf=? ORDER BY ${safeSort} ${safeOrder}`)
@@ -328,7 +329,7 @@ app.get('/api/comics', requireAuth, (req, res) => {
 });
 
 app.get('/api/comics/:id', requireAuth, (req, res) => {
-  const row = db.prepare('SELECT * FROM comics WHERE id=? AND user_id=?').get(req.params.id, req.auth.userId);
+  const row = db.prepare('SELECT * FROM comics WHERE id=? AND user_id=?').get(req.params.id, getAuth(req).userId);
   if (!row) return res.status(404).json({ error: 'Not found' });
   res.json(parseTags(row));
 });
@@ -347,7 +348,7 @@ app.post('/api/comics', requireAuth, (req, res) => {
       rating_plot,rating_art,rating_writing,rating,
       date_read,review,tags,cover_color,cover_image,amazon_url,catalog_id)
     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-  `).run(req.auth.userId, title, publisher, writer, artist, issue_num, shelf,
+  `).run(getAuth(req).userId, title, publisher, writer, artist, issue_num, shelf,
          rating_plot, rating_art, rating_writing, rating,
          date_read, review, JSON.stringify(tags), cover_color, cover_image, amazon_url, catalog_id);
 
@@ -367,16 +368,16 @@ app.post('/api/comics', requireAuth, (req, res) => {
 
   // Notify followers of new read entry
   if (shelf === 'read') {
-    const followers = db.prepare('SELECT follower_id FROM follows WHERE following_id=?').all(req.auth.userId);
+    const followers = db.prepare('SELECT follower_id FROM follows WHERE following_id=?').all(getAuth(req).userId);
     const notifStmt = db.prepare('INSERT INTO notifications (user_id, type, actor_id, entity_id) VALUES (?,?,?,?)');
-    for (const f of followers) notifStmt.run(f.follower_id, 'new_read', req.auth.userId, result.lastInsertRowid);
+    for (const f of followers) notifStmt.run(f.follower_id, 'new_read', getAuth(req).userId, result.lastInsertRowid);
   }
 
   res.status(201).json(parseTags(db.prepare('SELECT * FROM comics WHERE id=?').get(result.lastInsertRowid)));
 });
 
 app.put('/api/comics/:id', requireAuth, (req, res) => {
-  const existing = db.prepare('SELECT * FROM comics WHERE id=? AND user_id=?').get(req.params.id, req.auth.userId);
+  const existing = db.prepare('SELECT * FROM comics WHERE id=? AND user_id=?').get(req.params.id, getAuth(req).userId);
   if (!existing) return res.status(404).json({ error: 'Not found' });
 
   const { title=existing.title, publisher=existing.publisher, writer=existing.writer,
@@ -397,19 +398,19 @@ app.put('/api/comics/:id', requireAuth, (req, res) => {
     .run(title,publisher,writer,artist,issue_num,shelf,
          rating_plot,rating_art,rating_writing,rating,
          date_read,review,JSON.stringify(tags),cover_color,cover_image,amazon_url,catalog_id,
-         req.params.id,req.auth.userId);
+         req.params.id,getAuth(req).userId);
 
   res.json(parseTags(db.prepare('SELECT * FROM comics WHERE id=?').get(req.params.id)));
 });
 
 app.delete('/api/comics/:id', requireAuth, (req, res) => {
-  const r = db.prepare('DELETE FROM comics WHERE id=? AND user_id=?').run(req.params.id, req.auth.userId);
+  const r = db.prepare('DELETE FROM comics WHERE id=? AND user_id=?').run(req.params.id, getAuth(req).userId);
   if (!r.changes) return res.status(404).json({ error: 'Not found' });
   res.json({ deleted: true });
 });
 
 app.get('/api/stats', requireAuth, (req, res) => {
-  const uid = req.auth.userId;
+  const uid = getAuth(req).userId;
   const read    = db.prepare("SELECT COUNT(*) n FROM comics WHERE user_id=? AND shelf='read'").get(uid).n;
   const reading = db.prepare("SELECT COUNT(*) n FROM comics WHERE user_id=? AND shelf='reading'").get(uid).n;
   const want    = db.prepare("SELECT COUNT(*) n FROM comics WHERE user_id=? AND shelf='want'").get(uid).n;
@@ -431,7 +432,7 @@ app.get('/api/stats', requireAuth, (req, res) => {
 // ── Follows ───────────────────────────────────────────────────────────────────
 
 app.post('/api/follow/:alias', requireAuth, (req, res) => {
-  const me = req.auth.userId;
+  const me = getAuth(req).userId;
   const target = db.prepare('SELECT user_id FROM alias WHERE alias=?').get(req.params.alias.toLowerCase());
   if (!target) return res.status(404).json({ error: 'User not found' });
   if (target.user_id === me) return res.status(400).json({ error: 'Cannot follow yourself' });
@@ -445,7 +446,7 @@ app.post('/api/follow/:alias', requireAuth, (req, res) => {
 });
 
 app.delete('/api/follow/:alias', requireAuth, (req, res) => {
-  const me = req.auth.userId;
+  const me = getAuth(req).userId;
   const target = db.prepare('SELECT user_id FROM alias WHERE alias=?').get(req.params.alias.toLowerCase());
   if (!target) return res.status(404).json({ error: 'User not found' });
   db.prepare('DELETE FROM follows WHERE follower_id=? AND following_id=?').run(me, target.user_id);
@@ -460,12 +461,12 @@ app.get('/api/following', requireAuth, (req, res) => {
     JOIN alias a ON a.user_id = f.following_id
     WHERE f.follower_id = ?
     ORDER BY f.created_at DESC
-  `).all(req.auth.userId);
+  `).all(getAuth(req).userId);
   res.json(rows);
 });
 
 app.get('/api/followers', requireAuth, (req, res) => {
-  const uid = req.auth.userId;
+  const uid = getAuth(req).userId;
   const rows = db.prepare(`
     SELECT a.alias, a.user_id,
            (SELECT COUNT(*) FROM comics WHERE user_id=a.user_id AND shelf='read') as read_count,
@@ -479,7 +480,7 @@ app.get('/api/followers', requireAuth, (req, res) => {
 });
 
 app.get('/api/feed', requireAuth, (req, res) => {
-  const uid = req.auth.userId;
+  const uid = getAuth(req).userId;
   const rows = db.prepare(`
     SELECT c.id, c.title, c.publisher, c.issue_num, c.rating, c.rating_plot, c.rating_art, c.rating_writing,
            c.cover_color, c.cover_image,
@@ -499,12 +500,12 @@ app.get('/api/feed', requireAuth, (req, res) => {
 // ── Notifications ─────────────────────────────────────────────────────────────
 
 app.get('/api/notifications/count', requireAuth, (req, res) => {
-  const n = db.prepare('SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read=0').get(req.auth.userId);
+  const n = db.prepare('SELECT COUNT(*) n FROM notifications WHERE user_id=? AND read=0').get(getAuth(req).userId);
   res.json({ count: n.n });
 });
 
 app.get('/api/notifications', requireAuth, (req, res) => {
-  const uid = req.auth.userId;
+  const uid = getAuth(req).userId;
   const rows = db.prepare(`
     SELECT n.*, a.alias as actor_alias
     FROM notifications n
@@ -519,12 +520,12 @@ app.get('/api/notifications', requireAuth, (req, res) => {
 });
 
 // ── Public profile ─────────────────────────────────────────────────────────────
-app.get('/api/profile/:alias', withAuth, (req, res) => {
+app.get('/api/profile/:alias', (req, res) => {
   const aliasRow = db.prepare('SELECT user_id FROM alias WHERE alias=?').get(req.params.alias.toLowerCase());
   if (!aliasRow) return res.status(404).json({ error: 'Hero not found' });
 
   const uid = aliasRow.user_id;
-  const viewerId = req.auth?.userId || null;
+  const viewerId = getAuth(req)?.userId || null;
 
   const read    = db.prepare("SELECT COUNT(*) n FROM comics WHERE user_id=? AND shelf='read'").get(uid).n;
   const reading = db.prepare("SELECT COUNT(*) n FROM comics WHERE user_id=? AND shelf='reading'").get(uid).n;
