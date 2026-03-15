@@ -162,8 +162,9 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
                         </div>
                         {c.publisher && <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: '0.1rem' }}>{c.publisher}</div>}
                         {c.rating > 0 && (
-                          <div style={{ display: 'flex', gap: '1px', marginTop: '0.2rem' }}>
-                            {[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '0.72rem', color: n <= c.rating ? 'var(--yellow)' : 'var(--border)' }}>★</span>)}
+                          <div style={{ display: 'flex', gap: '1px', marginTop: '0.2rem', alignItems: 'center' }}>
+                            {[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '0.72rem', color: n <= Math.round(c.rating) ? 'var(--yellow)' : 'var(--border)' }}>★</span>)}
+                            {c.rating % 1 !== 0 && <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem', color: 'var(--muted)', marginLeft: '0.15rem' }}>{c.rating}</span>}
                           </div>
                         )}
                         {c.review && (
