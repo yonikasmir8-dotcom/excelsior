@@ -8,6 +8,10 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// ── Trim env vars (whitespace in Railway UI causes Clerk to reject the key) ──
+if (process.env.CLERK_SECRET_KEY) process.env.CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY.trim();
+if (process.env.CLERK_PUBLISHABLE_KEY) process.env.CLERK_PUBLISHABLE_KEY = process.env.CLERK_PUBLISHABLE_KEY.trim();
+
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
 app.use(express.json());
