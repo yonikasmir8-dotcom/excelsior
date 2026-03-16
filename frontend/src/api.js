@@ -45,6 +45,7 @@ export const api = {
   trending: () => fetch(`${BASE}/trending`).then(r => r.json()),
   recommendations: (gt) => req('/recommendations', gt),
   wishlist: (alias) => fetch(`${BASE}/wishlist/${alias}`).then(r => r.json()),
+  search: (q, type='all') => fetch(`${BASE}/search?q=${encodeURIComponent(q)}&type=${type}`).then(r => r.json()),
 }
 
 // Open Library cover lookup (free, commercial-friendly)

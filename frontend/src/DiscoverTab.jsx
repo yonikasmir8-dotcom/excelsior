@@ -60,7 +60,7 @@ function Stars({ rating, size = '0.72rem' }) {
   return (
     <div style={{ display: 'flex', gap: '1px', alignItems: 'center' }}>
       {[1,2,3,4,5].map(n => (
-        <span key={n} style={{ fontSize: size, color: n <= Math.round(rating) ? 'var(--yellow)' : 'var(--border)' }}>★</span>
+        <span key={n} style={{ fontSize: size, color: n <= Math.round(rating) ? 'var(--star-review)' : 'var(--border)' }}>★</span>
       ))}
       <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem', color: 'var(--muted)', marginLeft: '0.2rem' }}>{rating}</span>
     </div>

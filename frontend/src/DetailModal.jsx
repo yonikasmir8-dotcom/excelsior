@@ -9,7 +9,7 @@ const catLbl = { fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55re
 function MiniStars({ value, size = '0.75rem' }) {
   return (
     <span style={{ display: 'inline-flex', gap: '1px' }}>
-      {[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: size, color: n <= value ? 'var(--yellow)' : 'var(--border)', lineHeight: 1 }}>★</span>)}
+      {[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: size, color: n <= value ? 'var(--star-review)' : 'var(--border)', lineHeight: 1 }}>★</span>)}
     </span>
   )
 }
@@ -87,8 +87,15 @@ export default function DetailModal({ comic, onClose, onEdit, onDelete }) {
                 </div>
               )}
               {dateStr && <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.6rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: '0.4rem' }}>Read {dateStr}</div>}
-              <div style={{ display: 'inline-block', marginTop: '0.4rem', background: SHELF_COLOR[comic.shelf], color: 'var(--white)', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.18rem 0.5rem', borderRadius: '2px' }}>
-                {SHELF_LABEL[comic.shelf]}
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+                <span style={{ display: 'inline-block', background: SHELF_COLOR[comic.shelf], color: 'var(--white)', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.18rem 0.5rem', borderRadius: '2px' }}>
+                  {SHELF_LABEL[comic.shelf]}
+                </span>
+                {comic.format && comic.format !== 'single' && (
+                  <span style={{ display: 'inline-block', background: 'var(--mid)', border: '1px solid var(--border)', color: 'var(--light)', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', padding: '0.18rem 0.5rem', borderRadius: '2px' }}>
+                    {comic.format === 'trade' ? 'Trade' : 'Omnibus'}
+                  </span>
+                )}
               </div>
               {comic.tags?.length > 0 && (
                 <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginTop: '0.5rem' }}>
@@ -104,7 +111,7 @@ export default function DetailModal({ comic, onClose, onEdit, onDelete }) {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <span style={{ ...catLbl, fontWeight: 700 }}>Your Rating</span>
                 {overallRating > 0 && (
-                  <span style={{ fontFamily: "'Bangers', cursive", fontSize: '1.1rem', color: 'var(--yellow)' }}>
+                  <span style={{ fontFamily: "'Bangers', cursive", fontSize: '1.1rem', color: 'var(--star-review)' }}>
                     {overallRating} ★
                   </span>
                 )}
@@ -133,19 +140,19 @@ export default function DetailModal({ comic, onClose, onEdit, onDelete }) {
                 </span>
               </div>
               {universalRatings.avg_overall && (
-                <div style={{ fontFamily: "'Bangers', cursive", fontSize: '1.2rem', color: 'var(--yellow)', marginBottom: '0.3rem' }}>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: '1.2rem', color: 'var(--star-review)', marginBottom: '0.3rem' }}>
                   {universalRatings.avg_overall} ★
                 </div>
               )}
               <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
                 {universalRatings.avg_plot && (
-                  <div><span style={catLbl}>Plot </span><span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem', color: 'var(--yellow)' }}>{universalRatings.avg_plot}★</span></div>
+                  <div><span style={catLbl}>Plot </span><span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem', color: 'var(--star-review)' }}>{universalRatings.avg_plot}★</span></div>
                 )}
                 {universalRatings.avg_art && (
-                  <div><span style={catLbl}>Art </span><span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem', color: 'var(--yellow)' }}>{universalRatings.avg_art}★</span></div>
+                  <div><span style={catLbl}>Art </span><span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem', color: 'var(--star-review)' }}>{universalRatings.avg_art}★</span></div>
                 )}
                 {universalRatings.avg_writing && (
-                  <div><span style={catLbl}>Writing </span><span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem', color: 'var(--yellow)' }}>{universalRatings.avg_writing}★</span></div>
+                  <div><span style={catLbl}>Writing </span><span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem', color: 'var(--star-review)' }}>{universalRatings.avg_writing}★</span></div>
                 )}
               </div>
             </div>
@@ -158,19 +165,23 @@ export default function DetailModal({ comic, onClose, onEdit, onDelete }) {
             </blockquote>
           )}
 
-          {/* Amazon buy button */}
-          <a href={buyUrl} target="_blank" rel="noopener noreferrer" style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem',
-            width: '100%', background: '#ff9900', color: 'var(--ink)',
-            fontFamily: "'Bangers', cursive", fontSize: '1.15rem', letterSpacing: '0.06em',
-            padding: '0.9rem 1rem', borderRadius: '3px', textDecoration: 'none',
-            boxShadow: '0 3px 0 #cc7a00', marginBottom: '0.5rem',
-          }}>
-            🛒 Buy on Amazon
-          </a>
-          <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem', color: 'var(--muted)', textAlign: 'center', letterSpacing: '0.06em', marginBottom: '1.1rem' }}>
-            We may earn a commission from purchases made via this link
-          </p>
+          {/* Amazon buy button — only for want-to-read */}
+          {comic.shelf === 'want' && (
+            <>
+              <a href={buyUrl} target="_blank" rel="noopener noreferrer" style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem',
+                width: '100%', background: '#ff9900', color: 'var(--ink)',
+                fontFamily: "'Bangers', cursive", fontSize: '1.15rem', letterSpacing: '0.06em',
+                padding: '0.9rem 1rem', borderRadius: '3px', textDecoration: 'none',
+                boxShadow: '0 3px 0 #cc7a00', marginBottom: '0.5rem',
+              }}>
+                🛒 Buy on Amazon
+              </a>
+              <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem', color: 'var(--muted)', textAlign: 'center', letterSpacing: '0.06em', marginBottom: '1.1rem' }}>
+                We may earn a commission from purchases made via this link
+              </p>
+            </>
+          )}
 
           {/* Edit / Delete */}
           <div style={{ display: 'flex', gap: '0.75rem', paddingTop: '1rem', borderTop: '2px solid var(--border)' }}>

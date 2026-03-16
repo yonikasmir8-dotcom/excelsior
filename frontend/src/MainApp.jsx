@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth, UserButton } from '@clerk/clerk-react'
 import { api, social, amazonUrl } from './api.js'
 import ComicModal from './ComicModal.jsx'
@@ -113,6 +113,14 @@ export default function MainApp({ alias }) {
   const [profileCopied, setProfileCopied] = useState(false)
   const [notifCount, setNotifCount]         = useState(0)
 
+  // Global search state
+  const [searchQuery, setSearchQuery]     = useState('')
+  const [searchResults, setSearchResults] = useState(null)
+  const [searchOpen, setSearchOpen]       = useState(false)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const searchTimer = useRef(null)
+  const searchBoxRef = useRef(null)
+
   const gt = useCallback(getToken, [])
 
   // Poll notification count
@@ -122,6 +130,31 @@ export default function MainApp({ alias }) {
     const t = setInterval(poll, 30000)
     return () => clearInterval(t)
   }, [gt])
+
+  // Global search with debounce
+  const handleSearch = useCallback((q) => {
+    setSearchQuery(q)
+    clearTimeout(searchTimer.current)
+    if (q.length < 2) { setSearchResults(null); setSearchOpen(false); return }
+    setSearchLoading(true)
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const data = await api.search(q)
+        setSearchResults(data)
+        setSearchOpen(true)
+      } catch { setSearchResults(null) }
+      setSearchLoading(false)
+    }, 350)
+  }, [])
+
+  // Close search on click outside
+  useEffect(() => {
+    const handler = (e) => {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(e.target)) setSearchOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const load = useCallback(async (filter) => {
     setLoading(true)
@@ -217,6 +250,118 @@ export default function MainApp({ alias }) {
           </nav>
         )}
 
+        {/* Global search */}
+        <div ref={searchBoxRef} style={{ position: 'relative', flex: isMobile ? 0 : '0 1 280px' }}>
+          <input
+            value={searchQuery}
+            onChange={e => handleSearch(e.target.value)}
+            onFocus={() => searchResults && searchQuery.length >= 2 && setSearchOpen(true)}
+            placeholder={isMobile ? '🔍' : '🔍 Search comics & users…'}
+            style={{
+              width: isMobile ? '36px' : '100%',
+              background: 'rgba(0,0,0,0.3)', border: '2px solid rgba(255,255,255,0.15)',
+              borderRadius: '3px', color: 'var(--white)',
+              fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem',
+              padding: isMobile ? '0.35rem' : '0.4rem 0.75rem',
+              outline: 'none', textAlign: isMobile ? 'center' : 'left',
+              transition: 'width 0.2s, background 0.2s',
+            }}
+            onFocusCapture={e => {
+              if (isMobile) {
+                e.target.style.width = '180px'
+                e.target.style.textAlign = 'left'
+                e.target.placeholder = 'Search comics & users…'
+              }
+            }}
+            onBlurCapture={e => {
+              if (isMobile && !searchQuery) {
+                e.target.style.width = '36px'
+                e.target.style.textAlign = 'center'
+                e.target.placeholder = '🔍'
+              }
+            }}
+          />
+          {searchOpen && searchResults && (
+            <div style={{
+              position: 'absolute', top: '100%', right: 0, width: isMobile ? '85vw' : '360px',
+              background: 'var(--panel)', border: '2px solid var(--border)',
+              borderRadius: '0 0 4px 4px', boxShadow: '0 12px 32px rgba(0,0,0,0.7)',
+              maxHeight: '420px', overflowY: 'auto', zIndex: 600,
+            }}>
+              {/* Comic results */}
+              {searchResults.comics?.length > 0 && (
+                <>
+                  <div style={{ padding: '0.5rem 0.75rem', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>Comics</div>
+                  {searchResults.comics.slice(0, 8).map(c => (
+                    <div key={c.id}
+                      onClick={() => { window.location.hash = ''; setView('discover'); setSearchOpen(false); setSearchQuery('') }}
+                      style={{
+                        display: 'flex', gap: '0.6rem', alignItems: 'center',
+                        padding: '0.55rem 0.75rem', cursor: 'pointer',
+                        borderBottom: '1px solid var(--border)', transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--mid)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      {c.cover_image
+                        ? <img src={c.cover_image} alt="" style={{ width: '28px', height: '40px', objectFit: 'cover', borderRadius: '2px', flexShrink: 0 }} />
+                        : <div style={{ width: '28px', height: '40px', background: 'var(--border)', borderRadius: '2px', flexShrink: 0 }} />
+                      }
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.82rem', fontWeight: 700, color: 'var(--white)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {c.title}{c.issue_num ? ` ${c.issue_num}` : ''}
+                        </div>
+                        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.6rem', color: 'var(--muted)' }}>
+                          {[c.publisher, c.writer].filter(Boolean).join(' · ')}
+                          {c.avg_rating ? ` · ★${c.avg_rating}` : ''}
+                          {c.log_count > 0 ? ` · ${c.log_count} logged` : ''}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+              {/* User results */}
+              {searchResults.users?.length > 0 && (
+                <>
+                  <div style={{ padding: '0.5rem 0.75rem', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>Users</div>
+                  {searchResults.users.slice(0, 6).map(u => (
+                    <a key={u.alias} href={`#/u/${u.alias}`}
+                      onClick={() => { setSearchOpen(false); setSearchQuery('') }}
+                      style={{
+                        display: 'flex', gap: '0.6rem', alignItems: 'center',
+                        padding: '0.55rem 0.75rem', cursor: 'pointer', textDecoration: 'none',
+                        borderBottom: '1px solid var(--border)', transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--mid)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <div style={{
+                        width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
+                        background: `hsl(${[...u.alias].reduce((n, c) => n + c.charCodeAt(0), 0) % 360}, 55%, 32%)`,
+                        border: '2px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontFamily: "'Bangers', cursive", fontSize: '0.65rem', color: 'rgba(255,255,255,0.9)',
+                      }}>{u.alias.slice(0, 2).toUpperCase()}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.88rem', fontWeight: 700, color: 'var(--yellow)' }}>{u.alias}</div>
+                        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.58rem', color: 'var(--muted)' }}>
+                          {u.read_count} read · {u.follower_count} followers
+                        </div>
+                      </div>
+                    </a>
+                  ))}
+                </>
+              )}
+              {/* No results */}
+              {(!searchResults.comics?.length && !searchResults.users?.length) && (
+                <div style={{ padding: '1.5rem', textAlign: 'center', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.75rem', color: 'var(--muted)' }}>
+                  No results for "{searchQuery}"
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? '0.5rem' : '0.75rem' }}>
           {/* Share — icon only on mobile */}
           <button onClick={copyProfile} style={{
@@ -306,7 +451,7 @@ export default function MainApp({ alias }) {
                       {[c.writer && `W: ${c.writer}`, c.artist && `A: ${c.artist}`].filter(Boolean).join('  ·  ')}
                     </div>
                   )}
-                  {c.rating > 0 && <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>{[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '0.78rem', color: n <= Math.round(c.rating) ? 'var(--yellow)' : 'var(--border)' }}>★</span>)}<span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.62rem', color: 'var(--muted)', marginLeft: '0.25rem' }}>{c.rating}</span></div>}
+                  {c.rating > 0 && <div style={{ display: 'flex', gap: '2px', alignItems: 'center' }}>{[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '0.78rem', color: n <= Math.round(c.rating) ? 'var(--star-review)' : 'var(--border)' }}>★</span>)}<span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.62rem', color: 'var(--muted)', marginLeft: '0.25rem' }}>{c.rating}</span></div>}
                   {c.review && !isMobile && (
                     <div style={{ fontSize: '0.78rem', color: '#888', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', fontStyle: 'italic' }}>{c.review}</div>
                   )}
@@ -341,7 +486,7 @@ export default function MainApp({ alias }) {
             {loading ? <Spinner /> : comics.length === 0 ? (
               <EmptyState icon="📦" title="Shelf empty" sub="Add some comics to get started" />
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? '100px' : '130px'}, 1fr))`, gap: isMobile ? '1rem 0.85rem' : '1.5rem 1.25rem' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fill, ${isMobile ? '100px' : '130px'})`, gap: isMobile ? '1rem 0.85rem' : '1.5rem 1.25rem', justifyContent: 'start' }}>
                 {comics.map((c, i) => (
                   <div key={c.id} className="anim-up" style={{ animationDelay: `${i * 0.03}s`, cursor: 'pointer', WebkitTapHighlightColor: 'transparent' }}
                     onClick={() => setDetail(c)}>
@@ -359,7 +504,7 @@ export default function MainApp({ alias }) {
                       <div style={{ position: 'absolute', bottom: 4, right: 4, background: SHELF_COLOR[c.shelf], color: 'var(--white)', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: '0.46rem', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.12rem 0.32rem', borderRadius: '2px' }}>{SHELF_LABEL[c.shelf]}</div>
                     </div>
                     <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, fontSize: isMobile ? '0.75rem' : '0.82rem', marginTop: '0.45rem', lineHeight: 1.2, color: 'var(--white)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</div>
-                    {c.rating > 0 && <div style={{ display: 'flex', gap: '1px', marginTop: '0.2rem', alignItems: 'center' }}>{[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '0.62rem', color: n <= Math.round(c.rating) ? 'var(--yellow)' : 'var(--border)' }}>★</span>)}<span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.5rem', color: 'var(--muted)', marginLeft: '0.15rem' }}>{c.rating}</span></div>}
+                    {c.rating > 0 && <div style={{ display: 'flex', gap: '1px', marginTop: '0.2rem', alignItems: 'center' }}>{[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '0.62rem', color: n <= Math.round(c.rating) ? 'var(--star-review)' : 'var(--border)' }}>★</span>)}<span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.5rem', color: 'var(--muted)', marginLeft: '0.15rem' }}>{c.rating}</span></div>}
                     {c.shelf === 'want' && (
                       <a href={amazonUrl(c.title, c.publisher)} target="_blank" rel="noopener noreferrer"
                         onClick={e => e.stopPropagation()}

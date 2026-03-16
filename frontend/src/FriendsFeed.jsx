@@ -163,7 +163,7 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
                         {c.publisher && <div style={{ fontSize: '0.7rem', color: 'var(--muted)', marginTop: '0.1rem' }}>{c.publisher}</div>}
                         {c.rating > 0 && (
                           <div style={{ display: 'flex', gap: '1px', marginTop: '0.2rem', alignItems: 'center' }}>
-                            {[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '0.72rem', color: n <= Math.round(c.rating) ? 'var(--yellow)' : 'var(--border)' }}>★</span>)}
+                            {[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '0.72rem', color: n <= Math.round(c.rating) ? 'var(--star-review)' : 'var(--border)' }}>★</span>)}
                             {c.rating % 1 !== 0 && <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem', color: 'var(--muted)', marginLeft: '0.15rem' }}>{c.rating}</span>}
                           </div>
                         )}
@@ -172,18 +172,6 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
                             "{c.review}"
                           </div>
                         )}
-                        <a href={amazonUrl(c.title, c.publisher)} target="_blank" rel="noopener noreferrer"
-                          onClick={e => e.stopPropagation()}
-                          style={{
-                            display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                            marginTop: '0.35rem', background: '#ff9900', color: 'var(--ink)',
-                            fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem',
-                            fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
-                            padding: '0.22rem 0.5rem', borderRadius: '2px', textDecoration: 'none',
-                            boxShadow: '0 1px 0 #cc7a00',
-                          }}>
-                          Buy on Amazon
-                        </a>
                       </div>
                     </div>
                   ))}

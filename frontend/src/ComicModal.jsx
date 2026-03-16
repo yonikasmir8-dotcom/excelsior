@@ -61,6 +61,7 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
     cover_image:    initial?.cover_image    || '',
     amazon_url:     initial?.amazon_url     || '',
     catalog_id:     initial?.catalog_id     || null,
+    format:         initial?.format         || 'single',
   })
 
   const [hoverPlot, setHoverPlot]       = useState(0)
@@ -304,6 +305,16 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Format */}
+          <div>
+            <label style={lbl}>Format</label>
+            <select style={inp} value={form.format} onChange={e => set('format', e.target.value)}>
+              <option value="single" style={{ background: 'var(--panel)' }}>Single Issue</option>
+              <option value="trade" style={{ background: 'var(--panel)' }}>Trade Paperback</option>
+              <option value="omnibus" style={{ background: 'var(--panel)' }}>Omnibus</option>
+            </select>
           </div>
 
           {/* Publisher + Date */}

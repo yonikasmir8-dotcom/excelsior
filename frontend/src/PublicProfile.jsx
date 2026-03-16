@@ -41,7 +41,7 @@ function Stars({ rating }) {
   return (
     <div style={{ display: 'flex', gap: '1px', alignItems: 'center' }}>
       {[1,2,3,4,5].map(n => (
-        <span key={n} style={{ fontSize: '0.75rem', color: n <= Math.round(rating) ? 'var(--yellow)' : 'var(--border)' }}>★</span>
+        <span key={n} style={{ fontSize: '0.75rem', color: n <= Math.round(rating) ? 'var(--star-review)' : 'var(--border)' }}>★</span>
       ))}
       {rating % 1 !== 0 && <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem', color: 'var(--muted)', marginLeft: '0.2rem' }}>{rating}</span>}
     </div>
@@ -56,6 +56,7 @@ export default function PublicProfile({ alias }) {
   const [following, setFollowing] = useState(false)
   const [followLoading, setFollowLoading] = useState(false)
   const [wishlist, setWishlist] = useState([])
+  const [showSignUp, setShowSignUp] = useState(false)
   const authCtx = useAuth()
 
   useEffect(() => {
@@ -86,7 +87,7 @@ export default function PublicProfile({ alias }) {
   }, [alias])
 
   const handleFollow = async () => {
-    if (!authCtx?.isSignedIn) { window.location.hash = '/'; return }
+    if (!authCtx?.isSignedIn) { setShowSignUp(true); return }
     setFollowLoading(true)
     try {
       const gt = authCtx.getToken
@@ -137,6 +138,30 @@ export default function PublicProfile({ alias }) {
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--ink)', backgroundImage: halftone }}>
+
+      {/* Sign-up prompt overlay */}
+      {showSignUp && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(6px)' }}
+          onClick={() => setShowSignUp(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--panel)', border: '2px solid var(--border)', borderTop: '4px solid var(--red)', borderRadius: '8px', padding: '2rem 1.5rem', maxWidth: '340px', width: '90%', textAlign: 'center' }}>
+            <div style={{ fontFamily: "'Bangers', cursive", fontSize: '1.8rem', color: 'var(--yellow)', textShadow: '2px 2px 0 var(--red)', marginBottom: '0.75rem' }}>EXCELSIOR!</div>
+            <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.85rem', color: 'var(--light)', lineHeight: 1.5, marginBottom: '1.25rem' }}>
+              Join Excelsior! to follow <strong style={{ color: 'var(--yellow)' }}>{alias}</strong> and track your own comics
+            </p>
+            <button onClick={() => { window.location.hash = '/'; setShowSignUp(false) }} style={{
+              width: '100%', background: 'var(--red)', color: 'var(--white)', border: 'none',
+              fontFamily: "'Bangers', cursive", fontSize: '1.1rem', letterSpacing: '0.06em',
+              padding: '0.75rem 1rem', borderRadius: '4px', cursor: 'pointer', marginBottom: '0.5rem',
+            }}>Sign Up / Log In</button>
+            <button onClick={() => setShowSignUp(false)} style={{
+              width: '100%', background: 'none', border: '1px solid var(--border)', color: 'var(--muted)',
+              fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem', fontWeight: 600,
+              textTransform: 'uppercase', letterSpacing: '0.08em',
+              padding: '0.55rem 1rem', borderRadius: '4px', cursor: 'pointer',
+            }}>Cancel</button>
+          </div>
+        </div>
+      )}
 
       {/* ── HEADER ── */}
       <header style={{
@@ -317,17 +342,6 @@ export default function PublicProfile({ alias }) {
                           "{c.review}"
                         </div>
                       )}
-                      <a href={amazonUrl(c.title, c.publisher)} target="_blank" rel="noopener noreferrer"
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
-                          marginTop: '0.35rem', background: '#ff9900', color: 'var(--ink)',
-                          fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem',
-                          fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
-                          padding: '0.22rem 0.5rem', borderRadius: '2px', textDecoration: 'none',
-                          boxShadow: '0 1px 0 #cc7a00',
-                        }}>
-                        Buy on Amazon
-                      </a>
                     </div>
                   </div>
                 )
