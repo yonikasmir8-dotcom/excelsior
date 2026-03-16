@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import { social, api, amazonUrl } from './api.js'
+import { social, api, amazonUrl, publicApi } from './api.js'
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+const _raw = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+const API = _raw.endsWith('/api') ? _raw : _raw.replace(/\/$/, '') + '/api'
 const halftone = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Ccircle cx='3' cy='3' r='0.9' fill='rgba(255,255,255,0.03)'/%3E%3C/svg%3E")`
 
 function CoverCard({ comic, size = [90, 126] }) {
