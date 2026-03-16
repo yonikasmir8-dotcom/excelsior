@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import { social } from './api.js'
+import { social, api, amazonUrl } from './api.js'
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 const halftone = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Ccircle cx='3' cy='3' r='0.9' fill='rgba(255,255,255,0.03)'/%3E%3C/svg%3E")`
@@ -54,6 +54,7 @@ export default function PublicProfile({ alias }) {
   const [copied, setCopied]   = useState(false)
   const [following, setFollowing] = useState(false)
   const [followLoading, setFollowLoading] = useState(false)
+  const [wishlist, setWishlist] = useState([])
   const authCtx = useAuth()
 
   useEffect(() => {
@@ -72,6 +73,8 @@ export default function PublicProfile({ alias }) {
         const d = await r.json()
         setData(d)
         setFollowing(d.viewer_follows || false)
+        // Load wishlist for gift/buy suggestions
+        api.wishlist(alias).then(setWishlist).catch(() => {})
       } catch {
         setNotFound(true)
       } finally {
@@ -313,11 +316,61 @@ export default function PublicProfile({ alias }) {
                           "{c.review}"
                         </div>
                       )}
+                      <a href={amazonUrl(c.title, c.publisher)} target="_blank" rel="noopener noreferrer"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                          marginTop: '0.35rem', background: '#ff9900', color: 'var(--ink)',
+                          fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem',
+                          fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                          padding: '0.22rem 0.5rem', borderRadius: '2px', textDecoration: 'none',
+                          boxShadow: '0 1px 0 #cc7a00',
+                        }}>
+                        Buy on Amazon
+                      </a>
                     </div>
                   </div>
                 )
               })}
             </div>
+          </Section>
+        )}
+
+        {/* Wishlist — want to read (with buy buttons for gift ideas) */}
+        {wishlist.length > 0 && (
+          <Section title={`${alias}'s Wishlist`} subtitle="Gift ideas for this hero" accent="var(--yellow)">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
+              {wishlist.map(c => (
+                <div key={c.id} style={{
+                  display: 'flex', gap: '0.75rem', alignItems: 'center',
+                  background: 'var(--panel)', border: '2px solid var(--border)',
+                  borderRadius: '3px', padding: '0.75rem',
+                }}>
+                  <CoverCard comic={c} size={[48, 67]} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900,
+                      fontSize: '0.82rem', color: 'var(--white)', lineHeight: 1.2,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>{c.title}</div>
+                    {c.publisher && <div style={{ fontSize: '0.65rem', color: 'var(--muted)', marginTop: '0.1rem' }}>{c.publisher}</div>}
+                    <a href={amazonUrl(c.title, c.publisher)} target="_blank" rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                        marginTop: '0.4rem', background: '#ff9900', color: 'var(--ink)',
+                        fontFamily: "'Bangers', cursive", fontSize: '0.68rem',
+                        letterSpacing: '0.04em', padding: '0.3rem 0.6rem',
+                        borderRadius: '2px', textDecoration: 'none',
+                        boxShadow: '0 2px 0 #cc7a00',
+                      }}>
+                      Buy as Gift
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.52rem', color: '#444', letterSpacing: '0.06em', marginTop: '0.75rem', textAlign: 'center' }}>
+              We may earn a commission from purchases made via these links
+            </p>
           </Section>
         )}
 

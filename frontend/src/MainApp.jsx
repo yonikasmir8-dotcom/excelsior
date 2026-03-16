@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth, UserButton } from '@clerk/clerk-react'
-import { api, social } from './api.js'
+import { api, social, amazonUrl } from './api.js'
 import ComicModal from './ComicModal.jsx'
 import DetailModal from './DetailModal.jsx'
 import FriendsFeed from './FriendsFeed.jsx'
+import DiscoverTab from './DiscoverTab.jsx'
 
 const halftone = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Ccircle cx='3' cy='3' r='0.9' fill='rgba(255,255,255,0.03)'/%3E%3C/svg%3E")`
 const SHELF_COLOR = { read: 'var(--red)', reading: 'var(--blue)', want: 'var(--muted)' }
@@ -56,11 +57,11 @@ function CoverBlock({ comic, w = 88, h = 120 }) {
 // Bottom tab bar — shown on mobile only
 function BottomNav({ view, setView, onAdd, notifCount }) {
   const tabs = [
-    { v: 'diary',   icon: '📖', label: 'Log' },
-    { v: 'add',     icon: '＋',  label: 'Log Comic', isAction: true },
-    { v: 'shelf',   icon: '📚', label: 'Collection' },
-    { v: 'friends', icon: '👥', label: 'Friends' },
-    { v: 'stats',   icon: '⚡', label: 'Stats' },
+    { v: 'diary',    icon: '📖', label: 'Log' },
+    { v: 'add',      icon: '＋',  label: 'Log Comic', isAction: true },
+    { v: 'shelf',    icon: '📚', label: 'Collection' },
+    { v: 'discover', icon: '🔍', label: 'Discover' },
+    { v: 'friends',  icon: '👥', label: 'Friends' },
   ]
   return (
     <nav style={{
@@ -136,7 +137,7 @@ export default function MainApp({ alias }) {
   }, [gt])
 
   useEffect(() => {
-    if (view === 'friends') return // FriendsFeed manages its own data
+    if (view === 'friends' || view === 'discover') return // These tabs manage their own data
     load(view === 'shelf' ? shelfFilter : null)
   }, [view, shelfFilter])
 
@@ -199,7 +200,7 @@ export default function MainApp({ alias }) {
         {/* Desktop nav — hidden on mobile (replaced by bottom bar) */}
         {!isMobile && (
           <nav style={{ display: 'flex' }}>
-            {[['diary', 'Log'], ['shelf', 'Collection'], ['friends', 'Friends'], ['stats', 'Stats']].map(([v, label]) => (
+            {[['diary', 'Log'], ['shelf', 'Collection'], ['discover', 'Discover'], ['friends', 'Friends'], ['stats', 'Stats']].map(([v, label]) => (
               <button key={v} onClick={() => setView(v)} style={{
                 background: view === v ? 'rgba(0,0,0,0.25)' : 'none',
                 border: 'none', borderLeft: '2px solid rgba(0,0,0,0.2)',
@@ -359,6 +360,21 @@ export default function MainApp({ alias }) {
                     </div>
                     <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, fontSize: isMobile ? '0.75rem' : '0.82rem', marginTop: '0.45rem', lineHeight: 1.2, color: 'var(--white)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</div>
                     {c.rating > 0 && <div style={{ display: 'flex', gap: '1px', marginTop: '0.2rem', alignItems: 'center' }}>{[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '0.62rem', color: n <= Math.round(c.rating) ? 'var(--yellow)' : 'var(--border)' }}>★</span>)}<span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.5rem', color: 'var(--muted)', marginLeft: '0.15rem' }}>{c.rating}</span></div>}
+                    {c.shelf === 'want' && (
+                      <a href={amazonUrl(c.title, c.publisher)} target="_blank" rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          gap: '0.25rem', marginTop: '0.35rem',
+                          background: '#ff9900', color: 'var(--ink)',
+                          fontFamily: "'Bangers', cursive", fontSize: '0.62rem',
+                          letterSpacing: '0.04em', padding: '0.28rem 0.55rem',
+                          borderRadius: '2px', textDecoration: 'none',
+                          boxShadow: '0 2px 0 #cc7a00',
+                        }}>
+                        Get It
+                      </a>
+                    )}
                   </div>
                 ))}
               </div>
@@ -439,6 +455,11 @@ export default function MainApp({ alias }) {
           </div>
           )
         )}
+        {/* ── DISCOVER ── */}
+        {view === 'discover' && (
+          <DiscoverTab isMobile={isMobile} />
+        )}
+
         {/* ── FRIENDS ── */}
         {view === 'friends' && (
           <FriendsFeed myAlias={alias} isMobile={isMobile} onNotifsRead={() => setNotifCount(0)} />

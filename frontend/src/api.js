@@ -40,6 +40,9 @@ export const api = {
   },
   tags: () => fetch(`${BASE}/tags`).then(r => r.json()),
   similarRaters: (gt) => req('/similar-raters', gt),
+  trending: () => fetch(`${BASE}/trending`).then(r => r.json()),
+  recommendations: (gt) => req('/recommendations', gt),
+  wishlist: (alias) => fetch(`${BASE}/wishlist/${alias}`).then(r => r.json()),
 }
 
 // Open Library cover lookup (free, commercial-friendly)

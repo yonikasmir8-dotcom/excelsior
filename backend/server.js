@@ -584,4 +584,124 @@ app.get('/api/profile/:alias', (req, res) => {
   });
 });
 
+// ── Trending / Discover ──────────────────────────────────────────────────────
+
+// Public: most-logged comics across all users (great for SEO + affiliate clicks)
+app.get('/api/trending', (req, res) => {
+  const rows = db.prepare(`
+    SELECT cc.id, cc.title, cc.issue_num, cc.publisher, cc.writer, cc.artist,
+           cc.cover_image, cc.tags,
+           COUNT(c.id) as log_count,
+           AVG(CASE WHEN c.rating > 0 THEN c.rating END) as avg_rating,
+           COUNT(CASE WHEN c.rating > 0 THEN 1 END) as rating_count
+    FROM comic_catalog cc
+    JOIN comics c ON c.catalog_id = cc.id
+    WHERE c.shelf IN ('read','reading')
+    GROUP BY cc.id
+    HAVING log_count >= 1
+    ORDER BY log_count DESC, avg_rating DESC
+    LIMIT 24
+  `).all();
+
+  res.json(rows.map(r => ({
+    ...r,
+    avg_rating: r.avg_rating ? +r.avg_rating.toFixed(1) : null,
+  })));
+});
+
+// Auth: personalized recommendations based on user's favourite tags & publishers
+app.get('/api/recommendations', apiAuth, (req, res) => {
+  const uid = getAuth(req).userId;
+
+  // Gather user's top tags and publishers
+  const userComics = db.prepare(`
+    SELECT tags, publisher, catalog_id FROM comics
+    WHERE user_id = ? AND shelf = 'read'
+  `).all(uid);
+
+  const readCatalogIds = new Set(
+    db.prepare('SELECT catalog_id FROM comics WHERE user_id = ? AND catalog_id IS NOT NULL')
+      .all(uid).map(r => r.catalog_id)
+  );
+
+  // Count tag frequency
+  const tagCounts = {};
+  const pubCounts = {};
+  for (const c of userComics) {
+    try {
+      const tags = JSON.parse(c.tags || '[]');
+      for (const t of tags) tagCounts[t] = (tagCounts[t] || 0) + 1;
+    } catch {}
+    if (c.publisher) pubCounts[c.publisher] = (pubCounts[c.publisher] || 0) + 1;
+  }
+
+  const topTags = Object.entries(tagCounts).sort((a,b) => b[1]-a[1]).slice(0, 5).map(e => e[0]);
+  const topPubs = Object.entries(pubCounts).sort((a,b) => b[1]-a[1]).slice(0, 3).map(e => e[0]);
+
+  // Find catalog entries matching user's taste that they haven't read
+  let recs = [];
+
+  // By publisher match
+  if (topPubs.length > 0) {
+    const pubPlaceholders = topPubs.map(() => '?').join(',');
+    const pubRecs = db.prepare(`
+      SELECT cc.*, COUNT(c.id) as log_count,
+             AVG(CASE WHEN c.rating > 0 THEN c.rating END) as avg_rating
+      FROM comic_catalog cc
+      LEFT JOIN comics c ON c.catalog_id = cc.id
+      WHERE cc.publisher IN (${pubPlaceholders})
+      GROUP BY cc.id
+      ORDER BY log_count DESC, cc.title ASC
+      LIMIT 30
+    `).all(...topPubs);
+    recs.push(...pubRecs);
+  }
+
+  // By tag match (search catalog tags field)
+  for (const tag of topTags.slice(0, 3)) {
+    const tagRecs = db.prepare(`
+      SELECT cc.*, COUNT(c.id) as log_count,
+             AVG(CASE WHEN c.rating > 0 THEN c.rating END) as avg_rating
+      FROM comic_catalog cc
+      LEFT JOIN comics c ON c.catalog_id = cc.id
+      WHERE cc.tags LIKE ?
+      GROUP BY cc.id
+      ORDER BY log_count DESC
+      LIMIT 15
+    `).all(`%${tag}%`);
+    recs.push(...tagRecs);
+  }
+
+  // Deduplicate and remove already-read
+  const seen = new Set();
+  const unique = [];
+  for (const r of recs) {
+    if (seen.has(r.id) || readCatalogIds.has(r.id)) continue;
+    seen.add(r.id);
+    unique.push({
+      ...r,
+      avg_rating: r.avg_rating ? +r.avg_rating.toFixed(1) : null,
+      reason: topPubs.includes(r.publisher) ? `You like ${r.publisher}` :
+              topTags.find(t => (r.tags || '').includes(t)) ? `You enjoy ${topTags.find(t => (r.tags || '').includes(t))}` :
+              'Popular pick'
+    });
+  }
+
+  res.json(unique.slice(0, 16));
+});
+
+// ── Want-to-read list (public, for a user by alias) ─────────────────────────
+app.get('/api/wishlist/:alias', (req, res) => {
+  const aliasRow = db.prepare('SELECT user_id FROM alias WHERE alias=?').get(req.params.alias.toLowerCase());
+  if (!aliasRow) return res.status(404).json({ error: 'Not found' });
+
+  const rows = db.prepare(`
+    SELECT id, title, publisher, issue_num, cover_color, cover_image, writer, artist
+    FROM comics WHERE user_id = ? AND shelf = 'want'
+    ORDER BY created_at DESC LIMIT 20
+  `).all(aliasRow.user_id).map(parseTags);
+
+  res.json(rows);
+});
+
 app.listen(PORT, () => console.log(`\n⚡ EXCELSIOR! API → http://localhost:${PORT}\n`));

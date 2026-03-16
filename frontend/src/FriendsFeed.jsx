@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import { social } from './api.js'
+import { social, amazonUrl } from './api.js'
 
 const halftone = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Ccircle cx='3' cy='3' r='0.9' fill='rgba(255,255,255,0.03)'/%3E%3C/svg%3E")`
 const SHELF_COLOR = { read: 'var(--red)', reading: 'var(--blue)', want: 'var(--muted)' }
@@ -172,6 +172,18 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
                             "{c.review}"
                           </div>
                         )}
+                        <a href={amazonUrl(c.title, c.publisher)} target="_blank" rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                            marginTop: '0.35rem', background: '#ff9900', color: 'var(--ink)',
+                            fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem',
+                            fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase',
+                            padding: '0.22rem 0.5rem', borderRadius: '2px', textDecoration: 'none',
+                            boxShadow: '0 1px 0 #cc7a00',
+                          }}>
+                          Buy on Amazon
+                        </a>
                       </div>
                     </div>
                   ))}
