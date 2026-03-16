@@ -118,7 +118,7 @@ function CommentSection({ comicId }) {
 
 export default function DetailModal({ comic, onClose, onEdit, onDelete }) {
   if (!comic) return null
-  const buyUrl = comic.amazon_url || amazonUrl(comic.title, comic.publisher)
+  const buyUrl = comic.amazon_url || amazonUrl(comic.title, comic.issue_num, comic.publisher)
   const dateStr = comic.date_read
     ? new Date(comic.date_read + 'T12:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
     : null

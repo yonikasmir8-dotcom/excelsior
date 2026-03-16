@@ -296,7 +296,20 @@ export default function MainApp({ alias }) {
                   <div style={{ padding: '0.5rem 0.75rem', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--muted)', borderBottom: '1px solid var(--border)' }}>Comics</div>
                   {searchResults.comics.slice(0, 8).map(c => (
                     <div key={c.id}
-                      onClick={() => { window.location.hash = ''; setView('discover'); setSearchOpen(false); setSearchQuery('') }}
+                      onClick={() => {
+                        const owned = comics.find(uc => uc.catalog_id === c.id)
+                        if (owned) {
+                          setDetail(owned)
+                        } else {
+                          setEditing({
+                            title: c.title, publisher: c.publisher, writer: c.writer,
+                            artist: c.artist, issue_num: c.issue_num || '',
+                            cover_image: c.cover_image, format: c.format || 'single',
+                          })
+                          setShowAdd(true)
+                        }
+                        setSearchOpen(false); setSearchQuery('')
+                      }}
                       style={{
                         display: 'flex', gap: '0.6rem', alignItems: 'center',
                         padding: '0.55rem 0.75rem', cursor: 'pointer',
@@ -508,7 +521,7 @@ export default function MainApp({ alias }) {
                     <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, fontSize: isMobile ? '0.75rem' : '0.82rem', marginTop: '0.45rem', lineHeight: 1.2, color: 'var(--white)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.title}</div>
                     {c.rating > 0 && <div style={{ display: 'flex', gap: '1px', marginTop: '0.2rem', alignItems: 'center' }}>{[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: '0.62rem', color: n <= Math.round(c.rating) ? 'var(--star-review)' : 'var(--border)' }}>★</span>)}<span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.5rem', color: 'var(--muted)', marginLeft: '0.15rem' }}>{c.rating}</span></div>}
                     {c.shelf === 'want' && (
-                      <a href={amazonUrl(c.title, c.publisher)} target="_blank" rel="noopener noreferrer"
+                      <a href={amazonUrl(c.title, c.issue_num, c.publisher)} target="_blank" rel="noopener noreferrer"
                         onClick={e => e.stopPropagation()}
                         style={{
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',

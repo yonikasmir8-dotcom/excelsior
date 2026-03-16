@@ -32,8 +32,8 @@ function CoverCard({ comic, w = 100, h = 140 }) {
   )
 }
 
-function BuyButton({ title, publisher, size = 'normal' }) {
-  const url = amazonUrl(title, publisher)
+function BuyButton({ title, issueNum = '', publisher, size = 'normal' }) {
+  const url = amazonUrl(title, issueNum, publisher)
   const isSmall = size === 'small'
   return (
     <a href={url} target="_blank" rel="noopener noreferrer"
@@ -154,7 +154,7 @@ export default function DiscoverTab({ isMobile }) {
                     {c.writer && <div style={{ fontSize: '0.65rem', color: 'var(--light)' }}>W: {c.writer}</div>}
                     {c.avg_rating && <Stars rating={c.avg_rating} size="0.65rem" />}
                     <div style={{ marginTop: 'auto', paddingTop: '0.4rem' }}>
-                      <BuyButton title={c.title} publisher={c.publisher} size="small" />
+                      <BuyButton title={c.title} issueNum={c.issue_num} publisher={c.publisher} size="small" />
                     </div>
                   </div>
                 </div>
@@ -228,7 +228,7 @@ export default function DiscoverTab({ isMobile }) {
                   )}
                 </div>
 
-                <BuyButton title={c.title} publisher={c.publisher} size="small" />
+                <BuyButton title={c.title} issueNum={c.issue_num} publisher={c.publisher} size="small" />
               </div>
             ))}
           </div>

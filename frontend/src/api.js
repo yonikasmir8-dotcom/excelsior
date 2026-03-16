@@ -79,8 +79,11 @@ export async function fetchCoverImage(title, author = '') {
 }
 
 // Amazon affiliate search URL
-export function amazonUrl(title, publisher = '') {
-  const query = encodeURIComponent(`${title} ${publisher} comic book`.trim())
+export function amazonUrl(title, issueNum = '', publisher = '') {
+  const parts = [title]
+  if (issueNum) parts.push(`#${issueNum}`)
+  if (publisher) parts.push(publisher)
+  const query = encodeURIComponent(parts.join(' ').trim())
   return `https://www.amazon.com/s?k=${query}&tag=${TAG}&i=stripbooks`
 }
 

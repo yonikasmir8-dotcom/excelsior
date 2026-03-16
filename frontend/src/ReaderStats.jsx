@@ -58,7 +58,7 @@ export default function ReaderStats({ alias, getToken, onClose, isMobile }) {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
       <div style={{ background: 'var(--panel)', padding: '2rem', borderRadius: '8px', textAlign: 'center' }}>
         <p style={{ color: 'var(--red)', fontFamily: "'Barlow Condensed', sans-serif" }}>{error}</p>
-        <button onClick={onClose} style={{ marginTop: '1rem', background: 'var(--red)', color: 'white', border: 'none', padding: '0.5rem 1.5rem', borderRadius: '3px', fontFamily: "'Bangers', cursive", fontSize: '0.9rem' }}>Close</button>
+        <button onClick={onClose} style={{ marginTop: '1rem', background: 'var(--red)', color: 'white', border: 'none', padding: '0.5rem 1.5rem', borderRadius: '3px', fontFamily: "'Bangers', cursive", fontSize: '0.9rem', cursor: 'pointer' }}>Close</button>
       </div>
     </div>
   )
@@ -101,12 +101,12 @@ export default function ReaderStats({ alias, getToken, onClose, isMobile }) {
           <span style={{ fontFamily: "'Bangers', cursive", fontSize: '1.3rem', color: 'var(--yellow)', letterSpacing: '0.05em' }}>
             📊 {alias ? `${alias}'s` : 'My'} Reader Stats
           </span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: '1.2rem', padding: '0.2rem 0.5rem', borderRadius: '3px', minHeight: 'unset' }}>✕</button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: '1.2rem', padding: '0.2rem 0.5rem', borderRadius: '3px', minHeight: 'unset', cursor: 'pointer' }}>✕</button>
         </div>
 
         <div style={{ padding: '1.25rem' }}>
           {/* Totals */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem', marginBottom: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(70px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
             {[
               { label: 'Read', val: data.totals.read, color: 'var(--red)' },
               { label: 'Reading', val: data.totals.reading, color: '#2a9d4e' },

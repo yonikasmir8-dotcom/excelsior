@@ -17,6 +17,16 @@ const inp = {
   borderRadius: '3px', fontSize: '0.88rem', color: 'var(--white)',
   padding: '0.6rem 0.75rem', outline: 'none',
 }
+const selectInp = {
+  ...inp,
+  appearance: 'none', WebkitAppearance: 'none', MozAppearance: 'none',
+  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")`,
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 0.75rem center',
+  backgroundSize: '0.65rem',
+  paddingRight: '2rem',
+  cursor: 'pointer',
+}
 const lbl = {
   display: 'block', fontFamily: "'Barlow Condensed', sans-serif",
   fontSize: '0.62rem', fontWeight: 700, textTransform: 'uppercase',
@@ -236,7 +246,7 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
     try {
       await onSave({
         ...form,
-        amazon_url: form.amazon_url || amazonUrl(form.title, form.publisher),
+        amazon_url: form.amazon_url || amazonUrl(form.title, form.issue_num, form.publisher),
       })
     } catch (e) { setError(e.message); setSaving(false) }
   }
@@ -344,10 +354,10 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={lbl}>Shelf</label>
-                  <select style={inp} value={form.shelf} onChange={e => set('shelf', e.target.value)}>
-                    <option value="read" style={{ background: 'var(--panel)' }}>Read</option>
-                    <option value="reading" style={{ background: 'var(--panel)' }}>Reading</option>
-                    <option value="want" style={{ background: 'var(--panel)' }}>Want to Read</option>
+                  <select style={selectInp} value={form.shelf} onChange={e => set('shelf', e.target.value)}>
+                    <option value="read" style={{ background: '#1a1a2e', color: '#f0f0f0' }}>Read</option>
+                    <option value="reading" style={{ background: '#1a1a2e', color: '#f0f0f0' }}>Reading</option>
+                    <option value="want" style={{ background: '#1a1a2e', color: '#f0f0f0' }}>Want to Read</option>
                   </select>
                 </div>
               </div>
@@ -357,19 +367,19 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
           {/* Format */}
           <div>
             <label style={lbl}>Format</label>
-            <select style={inp} value={form.format} onChange={e => set('format', e.target.value)}>
-              <option value="single" style={{ background: 'var(--panel)' }}>Single Issue</option>
-              <option value="trade" style={{ background: 'var(--panel)' }}>Trade Paperback</option>
-              <option value="omnibus" style={{ background: 'var(--panel)' }}>Omnibus</option>
+            <select style={selectInp} value={form.format} onChange={e => set('format', e.target.value)}>
+              <option value="single" style={{ background: '#1a1a2e', color: '#f0f0f0' }}>Single Issue</option>
+              <option value="trade" style={{ background: '#1a1a2e', color: '#f0f0f0' }}>Trade Paperback</option>
+              <option value="omnibus" style={{ background: '#1a1a2e', color: '#f0f0f0' }}>Omnibus</option>
             </select>
           </div>
 
           {/* Era */}
           <div style={{ marginBottom: '0.75rem' }}>
             <label style={lbl}>Era</label>
-            <select style={inp} value={form.era} onChange={e => set('era', e.target.value)}>
-              <option value="" style={{ background: 'var(--panel)' }}>— Select era —</option>
-              {eraList.map(e => <option key={e.id} value={e.name} style={{ background: 'var(--panel)' }}>{e.name}</option>)}
+            <select style={selectInp} value={form.era} onChange={e => set('era', e.target.value)}>
+              <option value="" style={{ background: '#1a1a2e', color: '#f0f0f0' }}>— Select era —</option>
+              {eraList.map(e => <option key={e.id} value={e.name} style={{ background: '#1a1a2e', color: '#f0f0f0' }}>{e.name}</option>)}
             </select>
           </div>
 
@@ -540,8 +550,8 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
           {/* Cover colour fallback */}
           <div style={{ marginBottom: '1rem' }}>
             <label style={lbl}>Cover Colour (fallback)</label>
-            <select style={inp} value={form.cover_color} onChange={e => set('cover_color', e.target.value)}>
-              {COLORS.map(c => <option key={c.value} value={c.value} style={{ background: 'var(--panel)' }}>{c.label}</option>)}
+            <select style={selectInp} value={form.cover_color} onChange={e => set('cover_color', e.target.value)}>
+              {COLORS.map(c => <option key={c.value} value={c.value} style={{ background: '#1a1a2e', color: '#f0f0f0' }}>{c.label}</option>)}
             </select>
           </div>
 

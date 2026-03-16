@@ -382,7 +382,7 @@ export default function PublicProfile({ alias }) {
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>{c.title}</div>
                     {c.publisher && <div style={{ fontSize: '0.65rem', color: 'var(--muted)', marginTop: '0.1rem' }}>{c.publisher}</div>}
-                    <a href={amazonUrl(c.title, c.publisher)} target="_blank" rel="noopener noreferrer"
+                    <a href={amazonUrl(c.title, c.issue_num, c.publisher)} target="_blank" rel="noopener noreferrer"
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
                         marginTop: '0.4rem', background: '#ff9900', color: 'var(--ink)',
