@@ -1,4 +1,6 @@
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+// Ensure BASE always ends with /api (Vercel env may omit it)
+const _raw = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+const BASE = _raw.endsWith('/api') ? _raw : _raw.replace(/\/$/, '') + '/api'
 const TAG  = import.meta.env.VITE_AMAZON_TAG || 'excelsior-20'
 
 // Called with a getToken function from useAuth()
