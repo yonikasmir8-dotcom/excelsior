@@ -9,6 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // ── Trim env vars (whitespace in Railway UI causes Clerk to reject the key) ──
+// v2: trending, recommendations, wishlist endpoints
 if (process.env.CLERK_SECRET_KEY) process.env.CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY.trim();
 if (process.env.CLERK_PUBLISHABLE_KEY) process.env.CLERK_PUBLISHABLE_KEY = process.env.CLERK_PUBLISHABLE_KEY.trim();
 
