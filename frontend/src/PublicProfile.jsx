@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { social, api, amazonUrl, publicApi } from './api.js'
+import ReaderStats from './ReaderStats.jsx'
 
 const _raw = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 const API = _raw.endsWith('/api') ? _raw : _raw.replace(/\/$/, '') + '/api'
@@ -57,6 +58,7 @@ export default function PublicProfile({ alias }) {
   const [followLoading, setFollowLoading] = useState(false)
   const [wishlist, setWishlist] = useState([])
   const [showSignUp, setShowSignUp] = useState(false)
+  const [showStats, setShowStats] = useState(false)
   const authCtx = useAuth()
 
   useEffect(() => {
@@ -278,6 +280,18 @@ export default function PublicProfile({ alias }) {
         </div>
       </div>
 
+      {/* Detailed Stats Button */}
+      <div style={{ maxWidth: '1100px', margin: '0.75rem auto 0', padding: '0 clamp(0.85rem, 3vw, 1.5rem)' }}>
+        <button onClick={() => setShowStats(true)} style={{
+          width: '100%', background: 'var(--mid)', border: '2px solid var(--border)', borderBottom: '3px solid var(--border)',
+          borderRadius: '4px', padding: '0.7rem', cursor: 'pointer',
+          fontFamily: "'Bangers', cursive", fontSize: '0.9rem', color: 'var(--yellow)', letterSpacing: '0.05em',
+          textAlign: 'center',
+        }}>
+          📊 View Detailed Stats
+        </button>
+      </div>
+
       {/* ── MAIN CONTENT ── */}
       <div style={{ maxWidth: '1100px', margin: '0 auto', padding: 'clamp(1.25rem, 3vw, 2.5rem) clamp(0.85rem, 3vw, 1.5rem)' }}>
 
@@ -413,6 +427,14 @@ export default function PublicProfile({ alias }) {
           Track your comic book universe
         </div>
       </footer>
+
+      {showStats && (
+        <ReaderStats
+          alias={alias}
+          onClose={() => setShowStats(false)}
+          isMobile={window.innerWidth <= 640}
+        />
+      )}
     </div>
   )
 }

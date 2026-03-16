@@ -147,7 +147,36 @@ db.exec(`
     UNIQUE(user_id, comic_id)
   );
   CREATE INDEX IF NOT EXISTS idx_reposts_comic ON reposts(comic_id);
+
+  -- Characters & eras
+  CREATE TABLE IF NOT EXISTS characters (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT    NOT NULL UNIQUE COLLATE NOCASE
+  );
+
+  CREATE TABLE IF NOT EXISTS eras (
+    id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT    NOT NULL UNIQUE
+  );
+
+  CREATE TABLE IF NOT EXISTS comic_characters (
+    comic_id     INTEGER NOT NULL REFERENCES comics(id) ON DELETE CASCADE,
+    character_id INTEGER NOT NULL REFERENCES characters(id),
+    PRIMARY KEY (comic_id, character_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_cc_char ON comic_characters(character_id);
 `);
+
+// Seed eras if empty
+const eraCount = db.prepare('SELECT COUNT(*) n FROM eras').get().n;
+if (eraCount === 0) {
+  const insertEra = db.prepare('INSERT INTO eras (name) VALUES (?)');
+  for (const e of ['Golden Age','Silver Age','Bronze Age','Modern Age','Contemporary']) insertEra.run(e);
+}
+
+// Add era column to comics
+try { db.exec(`ALTER TABLE comics ADD COLUMN era TEXT NOT NULL DEFAULT ''`); } catch(e) {}
+try { db.exec(`ALTER TABLE comic_catalog ADD COLUMN era TEXT NOT NULL DEFAULT ''`); } catch(e) {}
 
 // Migrate old single rating → rating_plot + rating_art + rating_writing if needed
 // (only runs if there are comics with old rating > 0 but all 3 sub-ratings = 0)
@@ -434,7 +463,7 @@ app.post('/api/comics', apiAuth, (req, res) => {
           rating_plot=0, rating_art=0, rating_writing=0,
           date_read='', review='', tags=[], cover_color='#b30000',
           cover_image='', amazon_url='', catalog_id=null,
-          format='single' } = req.body;
+          format='single', era='', characters=[] } = req.body;
   if (!title) return res.status(400).json({ error: 'Title required' });
 
   const rating = computeRating(rating_plot, rating_art, rating_writing);
@@ -443,11 +472,21 @@ app.post('/api/comics', apiAuth, (req, res) => {
   const result = db.prepare(`
     INSERT INTO comics (user_id,title,publisher,writer,artist,issue_num,shelf,
       rating_plot,rating_art,rating_writing,rating,
-      date_read,review,tags,cover_color,cover_image,amazon_url,catalog_id,format)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      date_read,review,tags,cover_color,cover_image,amazon_url,catalog_id,format,era)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
   `).run(getAuth(req).userId, title, publisher, writer, artist, issue_num, shelf,
          rating_plot, rating_art, rating_writing, rating,
-         date_read, review, JSON.stringify(tags), cover_color, cover_image, amazon_url, catalog_id, fmt);
+         date_read, review, JSON.stringify(tags), cover_color, cover_image, amazon_url, catalog_id, fmt, era);
+
+  // Link characters
+  if (characters.length > 0) {
+    const getOrCreateChar = db.prepare('INSERT INTO characters (name) VALUES (?) ON CONFLICT(name) DO UPDATE SET name=name RETURNING id');
+    const linkChar = db.prepare('INSERT OR IGNORE INTO comic_characters (comic_id, character_id) VALUES (?,?)');
+    for (const name of characters) {
+      const row = getOrCreateChar.get(name.trim());
+      if (row) linkChar.run(result.lastInsertRowid, row.id);
+    }
+  }
 
   // If this comic isn't in the catalog yet, add it for future users
   if (!catalog_id && title) {
@@ -485,19 +524,33 @@ app.put('/api/comics/:id', apiAuth, (req, res) => {
           tags=JSON.parse(existing.tags||'[]'), cover_color=existing.cover_color,
           cover_image=existing.cover_image, amazon_url=existing.amazon_url,
           catalog_id=existing.catalog_id,
-          format=existing.format||'single' } = req.body;
+          format=existing.format||'single',
+          era=existing.era||'', characters } = req.body;
 
   const rating = computeRating(rating_plot, rating_art, rating_writing);
   const fmt = ['single','trade','omnibus'].includes(format) ? format : 'single';
 
   db.prepare(`UPDATE comics SET title=?,publisher=?,writer=?,artist=?,issue_num=?,shelf=?,
     rating_plot=?,rating_art=?,rating_writing=?,rating=?,
-    date_read=?,review=?,tags=?,cover_color=?,cover_image=?,amazon_url=?,catalog_id=?,format=?
+    date_read=?,review=?,tags=?,cover_color=?,cover_image=?,amazon_url=?,catalog_id=?,format=?,era=?
     WHERE id=? AND user_id=?`)
     .run(title,publisher,writer,artist,issue_num,shelf,
          rating_plot,rating_art,rating_writing,rating,
-         date_read,review,JSON.stringify(tags),cover_color,cover_image,amazon_url,catalog_id,fmt,
+         date_read,review,JSON.stringify(tags),cover_color,cover_image,amazon_url,catalog_id,fmt,era,
          req.params.id,getAuth(req).userId);
+
+  // Update characters if provided
+  if (characters !== undefined) {
+    db.prepare('DELETE FROM comic_characters WHERE comic_id=?').run(req.params.id);
+    if (characters.length > 0) {
+      const getOrCreateChar = db.prepare('INSERT INTO characters (name) VALUES (?) ON CONFLICT(name) DO UPDATE SET name=name RETURNING id');
+      const linkChar = db.prepare('INSERT OR IGNORE INTO comic_characters (comic_id, character_id) VALUES (?,?)');
+      for (const name of characters) {
+        const row = getOrCreateChar.get(name.trim());
+        if (row) linkChar.run(req.params.id, row.id);
+      }
+    }
+  }
 
   res.json(parseTags(db.prepare('SELECT * FROM comics WHERE id=?').get(req.params.id)));
 });
@@ -888,5 +941,126 @@ app.get('/api/comics/:id/social', (req, res) => {
   const repostCount = db.prepare('SELECT COUNT(*) n FROM reposts WHERE comic_id=?').get(req.params.id).n;
   res.json({ comments: commentCount, reposts: repostCount });
 });
+
+// ── Characters & Eras ─────────────────────────────────────────────────────────
+
+// Character autocomplete
+app.get('/api/characters/search', (req, res) => {
+  const q = (req.query.q || '').trim();
+  if (q.length < 1) return res.json([]);
+  const rows = db.prepare('SELECT id, name FROM characters WHERE name LIKE ? ORDER BY name LIMIT 20').all(`%${q}%`);
+  res.json(rows);
+});
+
+// Eras list
+app.get('/api/eras', (req, res) => {
+  res.json(db.prepare('SELECT id, name FROM eras ORDER BY id').all());
+});
+
+// Get characters for a comic
+app.get('/api/comics/:id/characters', (req, res) => {
+  const rows = db.prepare(`
+    SELECT ch.id, ch.name FROM comic_characters cc
+    JOIN characters ch ON ch.id = cc.character_id
+    WHERE cc.comic_id = ? ORDER BY ch.name
+  `).all(req.params.id);
+  res.json(rows);
+});
+
+// ── Detailed Stats ────────────────────────────────────────────────────────────
+
+app.get('/api/stats/detailed', apiAuth, (req, res) => {
+  const uid = getAuth(req).userId;
+  buildDetailedStats(uid, res);
+});
+
+app.get('/api/profile/:alias/stats', (req, res) => {
+  const aliasRow = db.prepare('SELECT user_id FROM alias WHERE alias=?').get(req.params.alias.toLowerCase());
+  if (!aliasRow) return res.status(404).json({ error: 'Not found' });
+  buildDetailedStats(aliasRow.user_id, res);
+});
+
+function buildDetailedStats(uid, res) {
+  const read = db.prepare("SELECT COUNT(*) n FROM comics WHERE user_id=? AND shelf='read'").get(uid).n;
+  const reading = db.prepare("SELECT COUNT(*) n FROM comics WHERE user_id=? AND shelf='reading'").get(uid).n;
+  const want = db.prepare("SELECT COUNT(*) n FROM comics WHERE user_id=? AND shelf='want'").get(uid).n;
+  const avg = db.prepare("SELECT AVG(rating) a FROM comics WHERE user_id=? AND rating>0 AND shelf='read'").get(uid).a;
+
+  // Publisher breakdown
+  const publishers = db.prepare(`
+    SELECT publisher, COUNT(*) as count FROM comics
+    WHERE user_id=? AND publisher!='' AND shelf='read'
+    GROUP BY publisher ORDER BY count DESC LIMIT 10
+  `).all(uid);
+
+  // Format breakdown
+  const formats = db.prepare(`
+    SELECT format, COUNT(*) as count FROM comics
+    WHERE user_id=? AND shelf='read'
+    GROUP BY format ORDER BY count DESC
+  `).all(uid);
+
+  // Era breakdown
+  const eras = db.prepare(`
+    SELECT era, COUNT(*) as count FROM comics
+    WHERE user_id=? AND era!='' AND shelf='read'
+    GROUP BY era ORDER BY count DESC
+  `).all(uid);
+
+  // Top writers
+  const writers = db.prepare(`
+    SELECT writer, COUNT(*) as count, ROUND(AVG(CASE WHEN rating>0 THEN rating END),1) as avg_rating
+    FROM comics WHERE user_id=? AND writer!='' AND shelf='read'
+    GROUP BY writer ORDER BY count DESC LIMIT 8
+  `).all(uid);
+
+  // Top artists
+  const artists = db.prepare(`
+    SELECT artist, COUNT(*) as count, ROUND(AVG(CASE WHEN rating>0 THEN rating END),1) as avg_rating
+    FROM comics WHERE user_id=? AND artist!='' AND shelf='read'
+    GROUP BY artist ORDER BY count DESC LIMIT 8
+  `).all(uid);
+
+  // Most-read characters
+  const characters = db.prepare(`
+    SELECT ch.name, COUNT(*) as count
+    FROM comic_characters cc
+    JOIN characters ch ON ch.id = cc.character_id
+    JOIN comics c ON c.id = cc.comic_id
+    WHERE c.user_id=? AND c.shelf='read'
+    GROUP BY ch.id ORDER BY count DESC LIMIT 10
+  `).all(uid);
+
+  // Monthly reading pace (last 12 months)
+  const pace = db.prepare(`
+    SELECT strftime('%Y-%m', date_read) as month, COUNT(*) as count
+    FROM comics WHERE user_id=? AND shelf='read' AND date_read!=''
+    GROUP BY month ORDER BY month DESC LIMIT 12
+  `).all(uid);
+
+  // Rating distribution
+  const ratingDist = db.prepare(`
+    SELECT CAST(rating AS INTEGER) as stars, COUNT(*) as count
+    FROM comics WHERE user_id=? AND shelf='read' AND rating>0
+    GROUP BY stars ORDER BY stars
+  `).all(uid);
+
+  // Tag breakdown
+  const allComics = db.prepare("SELECT tags FROM comics WHERE user_id=? AND shelf='read'").all(uid);
+  const tagCounts = {};
+  for (const c of allComics) {
+    try {
+      const tags = JSON.parse(c.tags || '[]');
+      for (const t of tags) tagCounts[t] = (tagCounts[t] || 0) + 1;
+    } catch {}
+  }
+  const topTags = Object.entries(tagCounts).sort((a,b) => b[1]-a[1]).slice(0, 12).map(([tag, count]) => ({ tag, count }));
+
+  res.json({
+    totals: { read, reading, want, avg_rating: avg ? +avg.toFixed(1) : null },
+    publishers, formats, eras, writers, artists, characters,
+    pace: pace.reverse(), ratingDist, topTags,
+  });
+}
 
 app.listen(PORT, () => console.log(`\n⚡ EXCELSIOR! API → http://localhost:${PORT}\n`));

@@ -62,6 +62,8 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
     amazon_url:     initial?.amazon_url     || '',
     catalog_id:     initial?.catalog_id     || null,
     format:         initial?.format         || 'single',
+    era:            initial?.era            || '',
+    characters:     initial?.characters     || [],
   })
 
   const [hoverPlot, setHoverPlot]       = useState(0)
@@ -85,9 +87,25 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
   const [tagSuggestions, setTagSuggestions] = useState([])
   const [showTagSuggestions, setShowTagSuggestions] = useState(false)
 
-  // Load predefined tags on mount
+  // Characters
+  const [charInput, setCharInput]         = useState('')
+  const [charSuggestions, setCharSuggestions] = useState([])
+  const [showCharSuggestions, setShowCharSuggestions] = useState(false)
+  const charTimer = useRef(null)
+
+  // Eras
+  const [eraList, setEraList] = useState([])
+
+  // Load predefined tags + eras on mount
   useEffect(() => {
     api.tags().then(setAllTags).catch(() => {})
+    api.eras().then(setEraList).catch(() => {})
+    // Load characters if editing
+    if (initial?.id) {
+      api.comicCharacters(initial.id).then(chars => {
+        set('characters', chars.map(c => c.name))
+      }).catch(() => {})
+    }
   }, [])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -176,6 +194,35 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault()
       if (tagInput.trim()) addTag(tagInput)
+    }
+  }
+
+  // Character handling
+  const addCharacter = (name) => {
+    const clean = name.trim()
+    if (clean && !form.characters.includes(clean)) {
+      set('characters', [...form.characters, clean])
+    }
+    setCharInput('')
+    setShowCharSuggestions(false)
+  }
+  const removeCharacter = (name) => set('characters', form.characters.filter(c => c !== name))
+  const handleCharInputChange = (val) => {
+    setCharInput(val)
+    clearTimeout(charTimer.current)
+    if (val.length < 1) { setCharSuggestions([]); setShowCharSuggestions(false); return }
+    charTimer.current = setTimeout(async () => {
+      try {
+        const results = await api.characters.search(val)
+        setCharSuggestions(results.filter(r => !form.characters.includes(r.name)))
+        setShowCharSuggestions(true)
+      } catch { setCharSuggestions([]) }
+    }, 250)
+  }
+  const handleCharKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      if (charInput.trim()) addCharacter(charInput)
     }
   }
 
@@ -315,6 +362,68 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
               <option value="trade" style={{ background: 'var(--panel)' }}>Trade Paperback</option>
               <option value="omnibus" style={{ background: 'var(--panel)' }}>Omnibus</option>
             </select>
+          </div>
+
+          {/* Era */}
+          <div style={{ marginBottom: '0.75rem' }}>
+            <label style={lbl}>Era</label>
+            <select style={inp} value={form.era} onChange={e => set('era', e.target.value)}>
+              <option value="" style={{ background: 'var(--panel)' }}>— Select era —</option>
+              {eraList.map(e => <option key={e.id} value={e.name} style={{ background: 'var(--panel)' }}>{e.name}</option>)}
+            </select>
+          </div>
+
+          {/* Characters */}
+          <div style={{ marginBottom: '0.75rem', position: 'relative' }}>
+            <label style={lbl}>Characters</label>
+            {form.characters.length > 0 && (
+              <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', marginBottom: '0.4rem' }}>
+                {form.characters.map(name => (
+                  <span key={name} style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.25rem',
+                    background: 'var(--dark)', border: '1px solid var(--border)', borderRadius: '3px',
+                    padding: '0.2rem 0.5rem', fontFamily: "'Barlow Condensed', sans-serif",
+                    fontSize: '0.65rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--light)',
+                  }}>
+                    {name}
+                    <button onClick={() => removeCharacter(name)} style={{
+                      background: 'none', border: 'none', color: 'var(--muted)', fontSize: '0.7rem',
+                      padding: 0, minHeight: 'unset', cursor: 'pointer', lineHeight: 1,
+                    }}>✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
+            <input
+              style={inp}
+              value={charInput}
+              onChange={e => handleCharInputChange(e.target.value)}
+              onKeyDown={handleCharKeyDown}
+              onBlur={() => setTimeout(() => setShowCharSuggestions(false), 150)}
+              placeholder="Type character name…"
+            />
+            {showCharSuggestions && charSuggestions.length > 0 && (
+              <div style={{
+                position: 'absolute', left: 0, right: 0, zIndex: 50,
+                background: 'var(--dark)', border: '2px solid var(--border)', borderRadius: '3px',
+                maxHeight: '140px', overflowY: 'auto', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+              }}>
+                {charSuggestions.map(ch => (
+                  <button key={ch.id}
+                    onMouseDown={e => { e.preventDefault(); addCharacter(ch.name) }}
+                    style={{
+                      display: 'block', width: '100%', background: 'none', border: 'none',
+                      borderBottom: '1px solid var(--border)', padding: '0.45rem 0.75rem',
+                      textAlign: 'left', cursor: 'pointer', minHeight: 'unset',
+                      fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem',
+                      color: 'var(--light)',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--mid)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                  >{ch.name}</button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Publisher + Date */}

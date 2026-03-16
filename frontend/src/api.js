@@ -47,6 +47,13 @@ export const api = {
   recommendations: (gt) => req('/recommendations', gt),
   wishlist: (alias) => fetch(`${BASE}/wishlist/${alias}`).then(r => r.json()),
   search: (q, type='all') => fetch(`${BASE}/search?q=${encodeURIComponent(q)}&type=${type}`).then(r => r.json()),
+  characters: {
+    search: (q) => fetch(`${BASE}/characters/search?q=${encodeURIComponent(q)}`).then(r => r.json()),
+  },
+  eras: () => fetch(`${BASE}/eras`).then(r => r.json()),
+  comicCharacters: (id) => fetch(`${BASE}/comics/${id}/characters`).then(r => r.json()),
+  detailedStats: (gt) => req('/stats/detailed', gt),
+  profileStats: (alias) => fetch(`${BASE}/profile/${alias}/stats`).then(r => r.json()),
   comments: {
     list:   (comicId)         => fetch(`${BASE}/comics/${comicId}/comments`).then(r => r.json()),
     add:    (gt, comicId, body, parentId) => req(`/comics/${comicId}/comments`, gt, { method: 'POST', body: JSON.stringify({ body, parent_id: parentId }) }),

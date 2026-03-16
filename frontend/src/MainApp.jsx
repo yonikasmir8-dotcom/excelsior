@@ -5,6 +5,7 @@ import ComicModal from './ComicModal.jsx'
 import DetailModal from './DetailModal.jsx'
 import FriendsFeed from './FriendsFeed.jsx'
 import DiscoverTab from './DiscoverTab.jsx'
+import ReaderStats from './ReaderStats.jsx'
 
 const halftone = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Ccircle cx='3' cy='3' r='0.9' fill='rgba(255,255,255,0.03)'/%3E%3C/svg%3E")`
 const SHELF_COLOR = { read: 'var(--red)', reading: 'var(--blue)', want: 'var(--muted)' }
@@ -109,6 +110,7 @@ export default function MainApp({ alias }) {
   const [showAdd, setShowAdd]       = useState(false)
   const [editing, setEditing]       = useState(null)
   const [detail, setDetail]         = useState(null)
+  const [showDetailedStats, setShowDetailedStats] = useState(false)
   const [toast, setToast]           = useState('')
   const [profileCopied, setProfileCopied] = useState(false)
   const [notifCount, setNotifCount]         = useState(0)
@@ -575,10 +577,19 @@ export default function MainApp({ alias }) {
               </div>
             )}
 
-            <div style={{ background: 'var(--panel)', border: '2px solid var(--border)', borderRadius: '3px', padding: '1.1rem 1.25rem' }}>
+            <div style={{ background: 'var(--panel)', border: '2px solid var(--border)', borderRadius: '3px', padding: '1.1rem 1.25rem', marginBottom: '0.75rem' }}>
               <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--muted)', marginBottom: '0.5rem' }}>Total Collection</div>
               <div style={{ fontFamily: "'Bangers', cursive", fontSize: isMobile ? '1.6rem' : '2rem', color: 'var(--white)', letterSpacing: '0.04em' }}>{stats.read + stats.reading + stats.want} issues tracked</div>
             </div>
+
+            <button onClick={() => setShowDetailedStats(true)} style={{
+              width: '100%', background: 'var(--mid)', border: '2px solid var(--border)', borderBottom: '3px solid var(--border)',
+              borderRadius: '4px', padding: '0.9rem', cursor: 'pointer', marginBottom: '0.75rem',
+              fontFamily: "'Bangers', cursive", fontSize: '1rem', color: 'var(--yellow)', letterSpacing: '0.05em',
+              textAlign: 'center',
+            }}>
+              📊 View Detailed Stats →
+            </button>
 
             {/* Share profile card */}
             {alias && (
@@ -629,6 +640,13 @@ export default function MainApp({ alias }) {
           onClose={() => setDetail(null)}
           onEdit={() => openEdit(detail)}
           onDelete={() => handleDelete(detail.id)}
+        />
+      )}
+      {showDetailedStats && (
+        <ReaderStats
+          getToken={getToken}
+          onClose={() => setShowDetailedStats(false)}
+          isMobile={isMobile}
         />
       )}
 
