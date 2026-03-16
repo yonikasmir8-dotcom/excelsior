@@ -21,6 +21,8 @@ app.use(clerkMiddleware());
 // ── Database ──────────────────────────────────────────────────────────────────
 const db = new Database(path.join(__dirname, 'excelsior.db'));
 db.pragma('journal_mode = WAL');
+db.pragma('busy_timeout = 5000');
+db.pragma('synchronous = NORMAL');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS comics (
@@ -96,6 +98,8 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_catalog_title ON comic_catalog(title);
+  CREATE INDEX IF NOT EXISTS idx_comics_user ON comics(user_id);
+  CREATE INDEX IF NOT EXISTS idx_comics_catalog ON comics(catalog_id);
 `);
 
 // ── Migrate existing DB: add new rating columns if they don't exist ──────────
@@ -209,6 +213,68 @@ if (catalogCount === 0) {
     insertMany(seed);
     console.log(`📚 Seeded catalog with ${seed.length} comics`);
   }
+}
+
+// ── Rate Limiter (in-memory, no external deps) ───────────────────────────────
+const rateLimitStore = new Map();
+function rateLimit(windowMs, maxRequests) {
+  return (req, res, next) => {
+    const key = (getAuth(req)?.userId) || req.ip || 'anon';
+    const now = Date.now();
+    let entry = rateLimitStore.get(key);
+    if (!entry || now - entry.start > windowMs) {
+      entry = { start: now, count: 0 };
+      rateLimitStore.set(key, entry);
+    }
+    entry.count++;
+    if (entry.count > maxRequests) {
+      return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+    }
+    next();
+  };
+}
+// Clean up old entries every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of rateLimitStore) {
+    if (now - entry.start > 900000) rateLimitStore.delete(key);
+  }
+}, 300000);
+
+const apiLimit = rateLimit(60000, 60);     // 60 req/min general
+const writeLimit = rateLimit(60000, 20);   // 20 writes/min
+const aliasLimit = rateLimit(3600000, 5);  // 5 alias changes/hour
+
+// ── Input Validation ─────────────────────────────────────────────────────────
+function sanitizeStr(val, maxLen = 200) {
+  if (typeof val !== 'string') return '';
+  return val.trim().slice(0, maxLen);
+}
+
+function validateComic(data) {
+  const errors = [];
+  if (!data.title || typeof data.title !== 'string' || data.title.trim().length === 0)
+    errors.push('Title is required');
+  if (data.title && data.title.length > 300) errors.push('Title too long (max 300)');
+  if (data.publisher && data.publisher.length > 150) errors.push('Publisher too long');
+  if (data.writer && data.writer.length > 150) errors.push('Writer too long');
+  if (data.artist && data.artist.length > 150) errors.push('Artist too long');
+  if (data.issue_num && data.issue_num.length > 50) errors.push('Issue number too long');
+  if (data.review && data.review.length > 5000) errors.push('Review too long (max 5000)');
+  if (data.shelf && !['read', 'reading', 'want'].includes(data.shelf)) errors.push('Invalid shelf');
+  for (const k of ['rating_plot', 'rating_art', 'rating_writing']) {
+    if (data[k] !== undefined && (isNaN(data[k]) || data[k] < 0 || data[k] > 5))
+      errors.push(`${k} must be 0-5`);
+  }
+  if (data.tags && Array.isArray(data.tags)) {
+    if (data.tags.length > 30) errors.push('Max 30 tags');
+    if (data.tags.some(t => typeof t !== 'string' || t.length > 60))
+      errors.push('Tags must be strings under 60 chars');
+  }
+  if (data.characters && Array.isArray(data.characters)) {
+    if (data.characters.length > 20) errors.push('Max 20 characters');
+  }
+  return errors;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -418,7 +484,7 @@ app.get('/api/alias/check/:alias', (req, res) => {
   res.json({ available: !row });
 });
 
-app.post('/api/alias', apiAuth, (req, res) => {
+app.post('/api/alias', apiAuth, aliasLimit, (req, res) => {
   const userId = getAuth(req).userId;
   const { alias } = req.body;
   if (!alias || alias.length < 2 || alias.length > 30)
@@ -458,13 +524,15 @@ app.get('/api/comics/:id', apiAuth, (req, res) => {
   res.json(parseTags(row));
 });
 
-app.post('/api/comics', apiAuth, (req, res) => {
+app.post('/api/comics', apiAuth, writeLimit, (req, res) => {
+  const valErrors = validateComic(req.body);
+  if (valErrors.length) return res.status(400).json({ error: valErrors.join('; ') });
+
   const { title, publisher='', writer='', artist='', issue_num='', shelf='read',
           rating_plot=0, rating_art=0, rating_writing=0,
           date_read='', review='', tags=[], cover_color='#b30000',
           cover_image='', amazon_url='', catalog_id=null,
           format='single', era='', characters=[] } = req.body;
-  if (!title) return res.status(400).json({ error: 'Title required' });
 
   const rating = computeRating(rating_plot, rating_art, rating_writing);
   const fmt = ['single','trade','omnibus'].includes(format) ? format : 'single';
@@ -512,9 +580,12 @@ app.post('/api/comics', apiAuth, (req, res) => {
   res.status(201).json(parseTags(db.prepare('SELECT * FROM comics WHERE id=?').get(result.lastInsertRowid)));
 });
 
-app.put('/api/comics/:id', apiAuth, (req, res) => {
+app.put('/api/comics/:id', apiAuth, writeLimit, (req, res) => {
   const existing = db.prepare('SELECT * FROM comics WHERE id=? AND user_id=?').get(req.params.id, getAuth(req).userId);
   if (!existing) return res.status(404).json({ error: 'Not found' });
+
+  const valErrors = validateComic({ ...existing, ...req.body });
+  if (valErrors.length) return res.status(400).json({ error: valErrors.join('; ') });
 
   const { title=existing.title, publisher=existing.publisher, writer=existing.writer,
           artist=existing.artist, issue_num=existing.issue_num, shelf=existing.shelf,
@@ -583,7 +654,7 @@ app.get('/api/stats', apiAuth, (req, res) => {
 
 // ── Follows ───────────────────────────────────────────────────────────────────
 
-app.post('/api/follow/:alias', apiAuth, (req, res) => {
+app.post('/api/follow/:alias', apiAuth, writeLimit, (req, res) => {
   const me = getAuth(req).userId;
   const target = db.prepare('SELECT user_id FROM alias WHERE alias=?').get(req.params.alias.toLowerCase());
   if (!target) return res.status(404).json({ error: 'User not found' });
@@ -880,9 +951,10 @@ app.get('/api/comics/:id/comments', (req, res) => {
 });
 
 // Add a comment
-app.post('/api/comics/:id/comments', apiAuth, (req, res) => {
+app.post('/api/comics/:id/comments', apiAuth, writeLimit, (req, res) => {
   const { body, parent_id = null } = req.body;
   if (!body || !body.trim()) return res.status(400).json({ error: 'Comment body required' });
+  if (body.length > 2000) return res.status(400).json({ error: 'Comment too long (max 2000 chars)' });
   const uid = getAuth(req).userId;
   const result = db.prepare('INSERT INTO comments (user_id, comic_id, parent_id, body) VALUES (?,?,?,?)')
     .run(uid, req.params.id, parent_id, body.trim());
