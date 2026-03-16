@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@clerk/clerk-react'
-import { social, amazonUrl } from './api.js'
+import { social, api } from './api.js'
 
 const halftone = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Ccircle cx='3' cy='3' r='0.9' fill='rgba(255,255,255,0.03)'/%3E%3C/svg%3E")`
 const SHELF_COLOR = { read: 'var(--red)', reading: 'var(--blue)', want: 'var(--muted)' }
@@ -55,6 +55,7 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
   const gt = useCallback(getToken, [])
 
   const [tab, setTab]             = useState('feed')
+  const [feedMode, setFeedMode]   = useState('friends') // 'friends' or 'global'
   const [feed, setFeed]           = useState([])
   const [following, setFollowing] = useState([])
   const [followers, setFollowers] = useState([])
@@ -64,7 +65,10 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
   const loadTab = useCallback(async (t) => {  // eslint-disable-line
     setLoading(true)
     try {
-      if (t === 'feed')      setFeed(await social.feed(gt))
+      if (t === 'feed')      {
+        if (feedMode === 'global') setFeed(await api.globalFeed())
+        else setFeed(await social.feed(gt))
+      }
       if (t === 'following') setFollowing(await social.following(gt))
       if (t === 'followers') setFollowers(await social.followers(gt))
       if (t === 'notifs') {
@@ -74,7 +78,7 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
       }
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
-  }, [gt]) // gt is stable from useCallback above
+  }, [gt, feedMode]) // gt is stable from useCallback above
 
   useEffect(() => { loadTab(tab) }, [tab, loadTab])
 
@@ -135,8 +139,25 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
         <>
           {/* ── ACTIVITY FEED ── */}
           {tab === 'feed' && (
+            <>
+              {/* Global / Friends toggle */}
+              <div style={{ display: 'flex', gap: 0, marginBottom: '1rem', border: '2px solid var(--border)', borderRadius: '3px', overflow: 'hidden', width: 'fit-content' }}>
+                {[['friends', '👥 Friends'], ['global', '🌍 Global']].map(([mode, label]) => (
+                  <button key={mode} onClick={() => setFeedMode(mode)} style={{
+                    background: feedMode === mode ? 'var(--red)' : 'none',
+                    color: feedMode === mode ? 'var(--white)' : 'var(--muted)',
+                    border: 'none', borderRight: mode === 'friends' ? '2px solid var(--border)' : 'none',
+                    fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.65rem', fontWeight: 700,
+                    textTransform: 'uppercase', letterSpacing: '0.08em',
+                    padding: '0.4rem 0.85rem', cursor: 'pointer', minHeight: 'unset',
+                  }}>{label}</button>
+                ))}
+              </div>
+            </>
+          )}
+          {tab === 'feed' && (
             feed.length === 0
-              ? <Empty icon="👥" title="No activity yet" sub={following.length === 0 ? 'Follow some heroes to see their reading here' : 'The heroes you follow haven\'t logged anything yet'} />
+              ? <Empty icon={feedMode === 'global' ? '🌍' : '👥'} title="No activity yet" sub={feedMode === 'global' ? 'No one has logged comics yet — be the first!' : (following.length === 0 ? 'Follow some heroes to see their reading here' : 'The heroes you follow haven\'t logged anything yet')} />
               : <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {feed.map((c, i) => (
                     <div key={`${c.user_id}-${c.id}`} className="anim-up" style={{ animationDelay: `${i * 0.03}s`,

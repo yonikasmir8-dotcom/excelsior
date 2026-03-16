@@ -43,9 +43,18 @@ export const api = {
   tags: () => fetch(`${BASE}/tags`).then(r => r.json()),
   similarRaters: (gt) => req('/similar-raters', gt),
   trending: () => fetch(`${BASE}/trending`).then(r => r.json()),
+  globalFeed: () => fetch(`${BASE}/feed/global`).then(r => r.json()),
   recommendations: (gt) => req('/recommendations', gt),
   wishlist: (alias) => fetch(`${BASE}/wishlist/${alias}`).then(r => r.json()),
   search: (q, type='all') => fetch(`${BASE}/search?q=${encodeURIComponent(q)}&type=${type}`).then(r => r.json()),
+  comments: {
+    list:   (comicId)         => fetch(`${BASE}/comics/${comicId}/comments`).then(r => r.json()),
+    add:    (gt, comicId, body, parentId) => req(`/comics/${comicId}/comments`, gt, { method: 'POST', body: JSON.stringify({ body, parent_id: parentId }) }),
+    react:  (gt, commentId, type) => req(`/comments/${commentId}/react`, gt, { method: 'POST', body: JSON.stringify({ type }) }),
+    delete: (gt, commentId) => req(`/comments/${commentId}`, gt, { method: 'DELETE' }),
+  },
+  social: (comicId) => fetch(`${BASE}/comics/${comicId}/social`).then(r => r.json()),
+  repost: (gt, comicId) => req(`/comics/${comicId}/repost`, gt, { method: 'POST' }),
 }
 
 // Open Library cover lookup (free, commercial-friendly)

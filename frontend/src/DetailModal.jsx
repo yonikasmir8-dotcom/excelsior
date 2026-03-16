@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useAuth } from '@clerk/clerk-react'
 import { amazonUrl, api } from './api.js'
 
 const SHELF_LABEL = { read: 'Read', reading: 'Currently Reading', want: 'Want to Read' }
@@ -11,6 +12,107 @@ function MiniStars({ value, size = '0.75rem' }) {
     <span style={{ display: 'inline-flex', gap: '1px' }}>
       {[1,2,3,4,5].map(n => <span key={n} style={{ fontSize: size, color: n <= value ? 'var(--star-review)' : 'var(--border)', lineHeight: 1 }}>★</span>)}
     </span>
+  )
+}
+
+function CommentSection({ comicId }) {
+  const authCtx = useAuth()
+  const gt = useCallback(authCtx?.getToken || (() => null), [authCtx])
+  const [comments, setComments] = useState([])
+  const [newComment, setNewComment] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [posting, setPosting] = useState(false)
+
+  useEffect(() => {
+    api.comments.list(comicId).then(setComments).catch(() => {}).finally(() => setLoading(false))
+  }, [comicId])
+
+  const handlePost = async () => {
+    if (!newComment.trim() || !authCtx?.isSignedIn) return
+    setPosting(true)
+    try {
+      const c = await api.comments.add(gt, comicId, newComment)
+      setComments(prev => [...prev, c])
+      setNewComment('')
+    } catch (e) { console.error(e) }
+    setPosting(false)
+  }
+
+  const handleReact = async (commentId, type) => {
+    if (!authCtx?.isSignedIn) return
+    try {
+      const result = await api.comments.react(gt, commentId, type)
+      setComments(prev => prev.map(c => c.id === commentId ? { ...c, likes: result.likes, dislikes: result.dislikes } : c))
+    } catch (e) { console.error(e) }
+  }
+
+  const timeAgo = (d) => {
+    const diff = Date.now() - new Date(d).getTime()
+    const m = Math.floor(diff / 60000)
+    if (m < 1) return 'just now'
+    if (m < 60) return `${m}m`
+    const h = Math.floor(m / 60)
+    if (h < 24) return `${h}h`
+    return `${Math.floor(h / 24)}d`
+  }
+
+  const btnStyle = { background: 'none', border: 'none', color: 'var(--muted)', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.6rem', cursor: 'pointer', padding: '0.15rem 0.35rem', borderRadius: '2px', minHeight: 'unset', letterSpacing: '0.04em' }
+
+  return (
+    <div style={{ marginBottom: '1.25rem' }}>
+      <div style={{ ...catLbl, fontWeight: 700, marginBottom: '0.5rem' }}>
+        💬 Comments {comments.length > 0 && `(${comments.length})`}
+      </div>
+
+      {loading ? <div style={{ fontSize: '0.7rem', color: 'var(--muted)', padding: '0.5rem 0' }}>Loading…</div> : (
+        <>
+          {comments.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.75rem' }}>
+              {comments.map(c => (
+                <div key={c.id} style={{ background: 'var(--mid)', border: '1px solid var(--border)', borderRadius: '3px', padding: '0.55rem 0.7rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
+                    <a href={c.alias ? `#/u/${c.alias}` : '#'} style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem', fontWeight: 700, color: 'var(--yellow)', textDecoration: 'none' }}>{c.alias || 'Anonymous'}</a>
+                    <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem', color: '#444' }}>{timeAgo(c.created_at)}</span>
+                  </div>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--light)', lineHeight: 1.5, margin: 0 }}>{c.body}</p>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.3rem', alignItems: 'center' }}>
+                    <button onClick={() => handleReact(c.id, 'like')} style={btnStyle}>👍 {c.likes || ''}</button>
+                    <button onClick={() => handleReact(c.id, 'dislike')} style={btnStyle}>👎 {c.dislikes || ''}</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {authCtx?.isSignedIn ? (
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <input
+                value={newComment}
+                onChange={e => setNewComment(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handlePost()}
+                placeholder="Add a comment…"
+                style={{
+                  flex: 1, background: 'var(--mid)', border: '2px solid var(--border)', borderRadius: '3px',
+                  color: 'var(--white)', fontSize: '0.78rem', padding: '0.45rem 0.65rem', outline: 'none',
+                  fontFamily: "'Barlow Condensed', sans-serif",
+                }}
+              />
+              <button onClick={handlePost} disabled={posting || !newComment.trim()} style={{
+                background: 'var(--red)', color: 'var(--white)', border: 'none',
+                fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.65rem', fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: '0.06em',
+                padding: '0.45rem 0.75rem', borderRadius: '3px', cursor: 'pointer', minHeight: 'unset',
+                opacity: posting || !newComment.trim() ? 0.5 : 1,
+              }}>Post</button>
+            </div>
+          ) : (
+            <div style={{ fontSize: '0.65rem', color: 'var(--muted)', fontFamily: "'Barlow Condensed', sans-serif", textAlign: 'center', padding: '0.5rem' }}>
+              Sign in to comment
+            </div>
+          )}
+        </>
+      )}
+    </div>
   )
 }
 
@@ -164,6 +266,9 @@ export default function DetailModal({ comic, onClose, onEdit, onDelete }) {
               "{comic.review}"
             </blockquote>
           )}
+
+          {/* Comments section */}
+          <CommentSection comicId={comic.id} />
 
           {/* Amazon buy button — only for want-to-read */}
           {comic.shelf === 'want' && (

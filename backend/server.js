@@ -116,6 +116,39 @@ try {
 try { db.exec(`ALTER TABLE comics ADD COLUMN format TEXT NOT NULL DEFAULT 'single'`); } catch(e) {}
 try { db.exec(`ALTER TABLE comic_catalog ADD COLUMN format TEXT NOT NULL DEFAULT 'single'`); } catch(e) {}
 
+// ── Comments + reactions tables ──────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS comments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT    NOT NULL,
+    comic_id    INTEGER NOT NULL,
+    parent_id   INTEGER DEFAULT NULL,
+    body        TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_comments_comic ON comments(comic_id);
+  CREATE INDEX IF NOT EXISTS idx_comments_parent ON comments(parent_id);
+
+  CREATE TABLE IF NOT EXISTS comment_reactions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT    NOT NULL,
+    comment_id  INTEGER NOT NULL,
+    type        TEXT    NOT NULL CHECK(type IN ('like','dislike')),
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, comment_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_creact_comment ON comment_reactions(comment_id);
+
+  CREATE TABLE IF NOT EXISTS reposts (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     TEXT    NOT NULL,
+    comic_id    INTEGER NOT NULL,
+    created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(user_id, comic_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_reposts_comic ON reposts(comic_id);
+`);
+
 // Migrate old single rating → rating_plot + rating_art + rating_writing if needed
 // (only runs if there are comics with old rating > 0 but all 3 sub-ratings = 0)
 try {
@@ -563,6 +596,22 @@ app.get('/api/feed', apiAuth, (req, res) => {
   res.json(rows);
 });
 
+// ── Global feed (recent activity from all users) ─────────────────────────────
+app.get('/api/feed/global', (req, res) => {
+  const rows = db.prepare(`
+    SELECT c.id, c.title, c.publisher, c.issue_num, c.rating, c.rating_plot, c.rating_art, c.rating_writing,
+           c.cover_color, c.cover_image,
+           c.date_read, c.review, c.shelf, c.created_at, c.user_id,
+           a.alias
+    FROM comics c
+    JOIN alias a ON a.user_id = c.user_id
+    WHERE c.shelf IN ('read','reading')
+    ORDER BY c.created_at DESC
+    LIMIT 40
+  `).all().map(parseTags);
+  res.json(rows);
+});
+
 // ── Notifications ─────────────────────────────────────────────────────────────
 
 app.get('/api/notifications/count', apiAuth, (req, res) => {
@@ -754,6 +803,90 @@ app.get('/api/wishlist/:alias', (req, res) => {
   `).all(aliasRow.user_id).map(parseTags);
 
   res.json(rows);
+});
+
+// ── Comments ─────────────────────────────────────────────────────────────────
+
+// List comments for a comic entry (by comic ID)
+app.get('/api/comics/:id/comments', (req, res) => {
+  const rows = db.prepare(`
+    SELECT c.*, a.alias
+    FROM comments c
+    LEFT JOIN alias a ON a.user_id = c.user_id
+    WHERE c.comic_id = ?
+    ORDER BY c.created_at ASC
+  `).all(req.params.id);
+
+  // Attach reaction counts
+  const enriched = rows.map(c => {
+    const likes = db.prepare("SELECT COUNT(*) n FROM comment_reactions WHERE comment_id=? AND type='like'").get(c.id).n;
+    const dislikes = db.prepare("SELECT COUNT(*) n FROM comment_reactions WHERE comment_id=? AND type='dislike'").get(c.id).n;
+    return { ...c, likes, dislikes };
+  });
+  res.json(enriched);
+});
+
+// Add a comment
+app.post('/api/comics/:id/comments', apiAuth, (req, res) => {
+  const { body, parent_id = null } = req.body;
+  if (!body || !body.trim()) return res.status(400).json({ error: 'Comment body required' });
+  const uid = getAuth(req).userId;
+  const result = db.prepare('INSERT INTO comments (user_id, comic_id, parent_id, body) VALUES (?,?,?,?)')
+    .run(uid, req.params.id, parent_id, body.trim());
+  const row = db.prepare('SELECT c.*, a.alias FROM comments c LEFT JOIN alias a ON a.user_id=c.user_id WHERE c.id=?').get(result.lastInsertRowid);
+  res.status(201).json({ ...row, likes: 0, dislikes: 0 });
+});
+
+// React to a comment (like/dislike toggle)
+app.post('/api/comments/:id/react', apiAuth, (req, res) => {
+  const uid = getAuth(req).userId;
+  const { type } = req.body; // 'like' or 'dislike'
+  if (!['like', 'dislike'].includes(type)) return res.status(400).json({ error: 'Invalid reaction type' });
+
+  const existing = db.prepare('SELECT * FROM comment_reactions WHERE user_id=? AND comment_id=?').get(uid, req.params.id);
+  if (existing) {
+    if (existing.type === type) {
+      // Same reaction — remove it (toggle off)
+      db.prepare('DELETE FROM comment_reactions WHERE id=?').run(existing.id);
+    } else {
+      // Different reaction — update it
+      db.prepare('UPDATE comment_reactions SET type=? WHERE id=?').run(type, existing.id);
+    }
+  } else {
+    db.prepare('INSERT INTO comment_reactions (user_id, comment_id, type) VALUES (?,?,?)').run(uid, req.params.id, type);
+  }
+
+  const likes = db.prepare("SELECT COUNT(*) n FROM comment_reactions WHERE comment_id=? AND type='like'").get(req.params.id).n;
+  const dislikes = db.prepare("SELECT COUNT(*) n FROM comment_reactions WHERE comment_id=? AND type='dislike'").get(req.params.id).n;
+  const myReaction = db.prepare('SELECT type FROM comment_reactions WHERE user_id=? AND comment_id=?').get(uid, req.params.id);
+  res.json({ likes, dislikes, my_reaction: myReaction?.type || null });
+});
+
+// Delete own comment
+app.delete('/api/comments/:id', apiAuth, (req, res) => {
+  const uid = getAuth(req).userId;
+  const r = db.prepare('DELETE FROM comments WHERE id=? AND user_id=?').run(req.params.id, uid);
+  if (!r.changes) return res.status(404).json({ error: 'Not found' });
+  res.json({ deleted: true });
+});
+
+// Repost a comic (share to your feed)
+app.post('/api/comics/:id/repost', apiAuth, (req, res) => {
+  const uid = getAuth(req).userId;
+  try {
+    db.prepare('INSERT INTO reposts (user_id, comic_id) VALUES (?,?)').run(uid, req.params.id);
+  } catch (e) {
+    // Already reposted — that's fine, ignore unique constraint
+  }
+  const count = db.prepare('SELECT COUNT(*) n FROM reposts WHERE comic_id=?').get(req.params.id).n;
+  res.json({ reposted: true, count });
+});
+
+// Get repost + comment counts for a comic
+app.get('/api/comics/:id/social', (req, res) => {
+  const commentCount = db.prepare('SELECT COUNT(*) n FROM comments WHERE comic_id=?').get(req.params.id).n;
+  const repostCount = db.prepare('SELECT COUNT(*) n FROM reposts WHERE comic_id=?').get(req.params.id).n;
+  res.json({ comments: commentCount, reposts: repostCount });
 });
 
 app.listen(PORT, () => console.log(`\n⚡ EXCELSIOR! API → http://localhost:${PORT}\n`));
