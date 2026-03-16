@@ -102,7 +102,7 @@ export default function PublicProfile({ alias }) {
         setFollowing(true)
         setData(d => ({ ...d, follower_count: d.follower_count + 1 }))
       }
-    } catch (e) { console.error(e) }
+    } catch (e) { console.error(e); setCopied(false); alert('Could not update follow status. Please try again.') }
     finally { setFollowLoading(false) }
   }
 
@@ -233,7 +233,7 @@ export default function PublicProfile({ alias }) {
                 {followLoading ? '…' : following ? 'Following ✓' : 'Follow'}
               </button>
             )}
-            {/* Share button */}
+            {/* Share buttons */}
             <button onClick={copyLink} style={{
               background: copied ? 'var(--green)' : 'var(--mid)',
               border: '2px solid ' + (copied ? 'var(--green)' : 'var(--border)'),
@@ -243,8 +243,24 @@ export default function PublicProfile({ alias }) {
               padding: '0.6rem 1.25rem', borderRadius: '3px', cursor: 'pointer',
               transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '0.5rem',
             }}>
-              {copied ? '✓ Link Copied!' : '⎘ Share Profile'}
+              {copied ? '✓ Link Copied!' : '⎘ Copy Link'}
             </button>
+            <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Check out ${alias}'s comic collection on Excelsior!`)}&url=${encodeURIComponent(window.location.href)}`}
+              target="_blank" rel="noopener noreferrer" style={{
+              background: 'var(--mid)', border: '2px solid var(--border)', color: 'var(--muted)',
+              fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.7rem', fontWeight: 700,
+              textTransform: 'uppercase', letterSpacing: '0.1em',
+              padding: '0.6rem 1rem', borderRadius: '3px', textDecoration: 'none',
+              display: 'flex', alignItems: 'center', gap: '0.4rem',
+            }}>𝕏 Tweet</a>
+            {typeof navigator.share === 'function' && (
+              <button onClick={() => navigator.share({ title: `${alias} on Excelsior!`, text: `Check out ${alias}'s comic collection`, url: window.location.href }).catch(() => {})} style={{
+                background: 'var(--mid)', border: '2px solid var(--border)', color: 'var(--muted)',
+                fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.7rem', fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: '0.1em',
+                padding: '0.6rem 1rem', borderRadius: '3px', cursor: 'pointer',
+              }}>↗ Share</button>
+            )}
             </div>
           </div>
 
@@ -425,6 +441,9 @@ export default function PublicProfile({ alias }) {
         }}>EXCELSIOR!</a>
         <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.62rem', color: 'var(--muted)', letterSpacing: '0.12em', textTransform: 'uppercase', marginTop: '0.4rem' }}>
           Track your comic book universe
+        </div>
+        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.52rem', color: '#333', letterSpacing: '0.06em', marginTop: '0.75rem', lineHeight: 1.8 }}>
+          As an Amazon Associate, Excelsior! earns from qualifying purchases.
         </div>
       </footer>
 

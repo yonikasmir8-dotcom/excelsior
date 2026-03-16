@@ -187,11 +187,16 @@ export default function MainApp({ alias }) {
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3500) }
 
   const handleSave = async (data) => {
-    if (editing) await api.comics.update(gt, editing.id, data)
-    else await api.comics.create(gt, data)
-    setShowAdd(false); setEditing(null); setDetail(null)
-    load(view === 'shelf' ? shelfFilter : null)
-    showToast(editing ? 'Updated!' : 'Added to collection!')
+    try {
+      if (editing) await api.comics.update(gt, editing.id, data)
+      else await api.comics.create(gt, data)
+      setShowAdd(false); setEditing(null); setDetail(null)
+      load(view === 'shelf' ? shelfFilter : null)
+      showToast(editing ? 'Updated!' : 'Added to collection!')
+    } catch (e) {
+      showToast('Save failed: ' + (e.message || 'Unknown error'))
+      throw e // re-throw so ComicModal can also handle it
+    }
   }
 
   const handleDelete = async (id) => {
@@ -255,6 +260,7 @@ export default function MainApp({ alias }) {
         {/* Global search */}
         <div ref={searchBoxRef} style={{ position: 'relative', flex: isMobile ? 0 : '0 1 280px' }}>
           <input
+            aria-label="Search comics and users"
             value={searchQuery}
             onChange={e => handleSearch(e.target.value)}
             onFocus={() => searchResults && searchQuery.length >= 2 && setSearchOpen(true)}
@@ -523,6 +529,7 @@ export default function MainApp({ alias }) {
                     {c.shelf === 'want' && (
                       <a href={amazonUrl(c.title, c.issue_num, c.publisher)} target="_blank" rel="noopener noreferrer"
                         onClick={e => e.stopPropagation()}
+                        aria-label={`Buy ${c.title} on Amazon`}
                         style={{
                           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                           gap: '0.25rem', marginTop: '0.35rem',
@@ -662,6 +669,17 @@ export default function MainApp({ alias }) {
           isMobile={isMobile}
         />
       )}
+
+      {/* ── AFFILIATE FOOTER ── */}
+      <footer style={{
+        textAlign: 'center', padding: '1.5rem 1rem',
+        paddingBottom: isMobile ? 'calc(var(--bottom-nav-h) + 1.5rem)' : '1.5rem',
+        fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem',
+        color: '#333', letterSpacing: '0.06em', lineHeight: 1.8,
+        borderTop: '1px solid var(--border)', maxWidth: '1200px', margin: '0 auto',
+      }}>
+        As an Amazon Associate, Excelsior! earns from qualifying purchases.
+      </footer>
 
       {/* ── TOAST ── */}
       <div style={{

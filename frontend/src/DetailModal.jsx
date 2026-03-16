@@ -64,7 +64,9 @@ function CommentSection({ comicId }) {
         💬 Comments {comments.length > 0 && `(${comments.length})`}
       </div>
 
-      {loading ? <div style={{ fontSize: '0.7rem', color: 'var(--muted)', padding: '0.5rem 0' }}>Loading…</div> : (
+      {loading ? <div style={{ fontSize: '0.7rem', color: 'var(--muted)', padding: '0.75rem 0', textAlign: 'center', fontFamily: "'Barlow Condensed', sans-serif", letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+        <span style={{ display: 'inline-block', animation: 'bang 1s ease-in-out infinite', marginRight: '0.3rem' }}>💬</span> Loading comments…
+      </div> : (
         <>
           {comments.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', marginBottom: '0.75rem' }}>
@@ -270,23 +272,21 @@ export default function DetailModal({ comic, onClose, onEdit, onDelete }) {
           {/* Comments section */}
           <CommentSection comicId={comic.id} />
 
-          {/* Amazon buy button — only for want-to-read */}
-          {comic.shelf === 'want' && (
-            <>
-              <a href={buyUrl} target="_blank" rel="noopener noreferrer" style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem',
-                width: '100%', background: '#ff9900', color: 'var(--ink)',
-                fontFamily: "'Bangers', cursive", fontSize: '1.15rem', letterSpacing: '0.06em',
-                padding: '0.9rem 1rem', borderRadius: '3px', textDecoration: 'none',
-                boxShadow: '0 3px 0 #cc7a00', marginBottom: '0.5rem',
-              }}>
-                🛒 Buy on Amazon
-              </a>
-              <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem', color: 'var(--muted)', textAlign: 'center', letterSpacing: '0.06em', marginBottom: '1.1rem' }}>
-                We may earn a commission from purchases made via this link
-              </p>
-            </>
-          )}
+          {/* Amazon buy button */}
+          <a href={buyUrl} target="_blank" rel="noopener noreferrer"
+            aria-label={`${comic.shelf === 'want' ? 'Buy' : 'Find'} ${comic.title} on Amazon`}
+            style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.6rem',
+            width: '100%', background: '#ff9900', color: 'var(--ink)',
+            fontFamily: "'Bangers', cursive", fontSize: '1.15rem', letterSpacing: '0.06em',
+            padding: '0.9rem 1rem', borderRadius: '3px', textDecoration: 'none',
+            boxShadow: '0 3px 0 #cc7a00', marginBottom: '0.5rem',
+          }}>
+            {comic.shelf === 'want' ? '🛒 Buy on Amazon' : '🛒 Find on Amazon'}
+          </a>
+          <p style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem', color: 'var(--muted)', textAlign: 'center', letterSpacing: '0.06em', marginBottom: '1.1rem' }}>
+            As an Amazon Associate, Excelsior! earns from qualifying purchases
+          </p>
 
           {/* Edit / Delete */}
           <div style={{ display: 'flex', gap: '0.75rem', paddingTop: '1rem', borderTop: '2px solid var(--border)' }}>

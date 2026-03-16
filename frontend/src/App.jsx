@@ -1,10 +1,38 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Component } from 'react'
 import { SignedIn, SignedOut, useAuth } from '@clerk/clerk-react'
 import AuthPage from './AuthPage.jsx'
 import AliasSetup from './AliasSetup.jsx'
 import MainApp from './MainApp.jsx'
 import PublicProfile from './PublicProfile.jsx'
 import { api } from './api.js'
+
+// ── Error Boundary ──────────────────────────────────────────────────────────
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { hasError: false, error: null } }
+  static getDerivedStateFromError(error) { return { hasError: true, error } }
+  componentDidCatch(err, info) { console.error('Excelsior! error:', err, info) }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ minHeight: '100vh', background: '#0d1117', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1.5rem', padding: '2rem' }}>
+          <div style={{ fontFamily: "'Bangers', cursive", fontSize: '3rem', color: '#f5d800', textShadow: '3px 3px 0 #d42b2b' }}>EXCELSIOR!</div>
+          <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '1.1rem', color: '#ccc', textAlign: 'center', maxWidth: '400px' }}>
+            Something went wrong. Please refresh the page.
+          </div>
+          <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.7rem', color: '#555', textAlign: 'center', maxWidth: '500px', wordBreak: 'break-word' }}>
+            {this.state.error?.message}
+          </div>
+          <button onClick={() => window.location.reload()} style={{
+            background: '#d42b2b', color: '#fff', border: 'none', borderBottom: '3px solid rgba(0,0,0,0.3)',
+            fontFamily: "'Bangers', cursive", fontSize: '1.1rem', letterSpacing: '0.06em',
+            padding: '0.7rem 2rem', borderRadius: '4px', cursor: 'pointer',
+          }}>Reload App</button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 // Simple hash router — supports #/u/:alias for public profiles
 function useHashRoute() {
@@ -23,18 +51,18 @@ export default function App() {
   // Public profile route — no login required
   const profileMatch = hash.match(/^#\/u\/([a-z0-9_-]+)$/i)
   if (profileMatch) {
-    return <PublicProfile alias={profileMatch[1].toLowerCase()} />
+    return <ErrorBoundary><PublicProfile alias={profileMatch[1].toLowerCase()} /></ErrorBoundary>
   }
 
   return (
-    <>
+    <ErrorBoundary>
       <SignedOut>
         <AuthPage />
       </SignedOut>
       <SignedIn>
         <AuthenticatedApp />
       </SignedIn>
-    </>
+    </ErrorBoundary>
   )
 }
 
@@ -55,11 +83,10 @@ function AuthenticatedApp() {
           if (dismissCount === 0) {
             // First time — show full setup page
             setShowAliasSetup(true)
-          } else if (dismissCount <= 2) {
-            // Subsequent visits — show gentle banner
+          } else if (dismissCount % 3 !== 0 || dismissCount <= 9) {
+            // Keep showing banner periodically — alias is critical for social features
             setShowAliasBanner(true)
           }
-          // After 2 dismissals — stop showing
         }
       })
       .catch(() => { setAlias(null) })

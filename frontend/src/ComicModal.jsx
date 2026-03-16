@@ -365,7 +365,7 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
           </div>
 
           {/* Format */}
-          <div>
+          <div style={{ marginBottom: '0.75rem' }}>
             <label style={lbl}>Format</label>
             <select style={selectInp} value={form.format} onChange={e => set('format', e.target.value)}>
               <option value="single" style={{ background: '#1a1a2e', color: '#f0f0f0' }}>Single Issue</option>
