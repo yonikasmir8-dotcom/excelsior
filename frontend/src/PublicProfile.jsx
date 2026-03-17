@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useAuth } from '@clerk/clerk-react'
+import { useAuth, UserButton } from '@clerk/clerk-react'
 import { social, api, amazonUrl, publicApi } from './api.js'
 import ReaderStats from './ReaderStats.jsx'
 
@@ -18,7 +18,7 @@ function CoverCard({ comic, size = [90, 126] }) {
       boxShadow: '4px 4px 0 rgba(0,0,0,0.6)', overflow: 'hidden', position: 'relative',
     }}>
       {comic.cover_image && !imgErr
-        ? <img src={comic.cover_image} alt={comic.title} onError={() => setImgErr(true)}
+        ? <img src={comic.cover_image} alt={comic.title} loading="lazy" onError={() => setImgErr(true)}
             style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         : <div style={{
             width: '100%', height: '100%', display: 'flex', alignItems: 'center',
@@ -177,12 +177,26 @@ export default function PublicProfile({ alias }) {
           color: 'var(--yellow)', textShadow: '2px 2px 0 var(--ink)', textDecoration: 'none',
           animation: 'bang 3s ease-in-out infinite',
         }}>EXCELSIOR!</a>
-        <a href="#/" style={{
-          fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.7rem', fontWeight: 700,
-          letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)',
-          textDecoration: 'none', border: '2px solid rgba(255,255,255,0.3)', padding: '0.4rem 0.9rem',
-          borderRadius: '3px', transition: 'all 0.15s',
-        }}>Sign In / Join</a>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          {authCtx?.isSignedIn ? (
+            <>
+              <a href="#/" style={{
+                fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.7rem', fontWeight: 700,
+                letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)',
+                textDecoration: 'none', border: '2px solid rgba(255,255,255,0.3)', padding: '0.4rem 0.9rem',
+                borderRadius: '3px', transition: 'all 0.15s',
+              }}>My Collection</a>
+              <UserButton afterSignOutUrl="/" appearance={{ variables: { colorBackground: 'var(--panel)', colorText: 'var(--white)' } }} />
+            </>
+          ) : (
+            <a href="#/" style={{
+              fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.7rem', fontWeight: 700,
+              letterSpacing: '0.1em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)',
+              textDecoration: 'none', border: '2px solid rgba(255,255,255,0.3)', padding: '0.4rem 0.9rem',
+              borderRadius: '3px', transition: 'all 0.15s',
+            }}>Sign In / Join</a>
+          )}
+        </div>
       </header>
 
       {/* ── HERO BANNER ── */}

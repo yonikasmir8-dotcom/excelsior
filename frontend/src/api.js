@@ -64,15 +64,13 @@ export const api = {
   repost: (gt, comicId) => req(`/comics/${comicId}/repost`, gt, { method: 'POST' }),
 }
 
-// Open Library cover lookup (free, commercial-friendly)
+// Cover lookup via server proxy (caches results, avoids slow direct Open Library calls)
 export async function fetchCoverImage(title, author = '') {
   try {
-    const q = encodeURIComponent(`${title} ${author} comic`.trim())
-    const res = await fetch(`https://openlibrary.org/search.json?q=${q}&fields=cover_i,title&limit=5`)
+    const params = new URLSearchParams({ title, author })
+    const res = await fetch(`${BASE}/cover-lookup?${params}`)
     const data = await res.json()
-    const hit = data.docs?.find(d => d.cover_i)
-    if (hit?.cover_i) return `https://covers.openlibrary.org/b/id/${hit.cover_i}-L.jpg`
-    return null
+    return data.cover || null
   } catch {
     return null
   }

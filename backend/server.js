@@ -14,7 +14,16 @@ if (process.env.CLERK_SECRET_KEY) process.env.CLERK_SECRET_KEY = process.env.CLE
 if (process.env.CLERK_PUBLISHABLE_KEY) process.env.CLERK_PUBLISHABLE_KEY = process.env.CLERK_PUBLISHABLE_KEY.trim();
 
 // ── Middleware ────────────────────────────────────────────────────────────────
-app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }));
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',').map(s => s.trim()).filter(Boolean);
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow requests with no origin (mobile apps, curl, server-to-server)
+    if (!origin || allowedOrigins.some(o => origin === o || origin.endsWith('.vercel.app'))) return cb(null, true);
+    cb(null, false);
+  },
+  credentials: true,
+}));
 app.use(express.json());
 app.use(clerkMiddleware());
 
@@ -290,11 +299,16 @@ const computeRating = (plot, art, writing) => {
   return +(rated.reduce((a,b) => a+b, 0) / rated.length).toFixed(1);
 };
 
-// Enrich rows with alias
-const withAlias = (rows) => rows.map(row => {
-  const a = db.prepare('SELECT alias FROM alias WHERE user_id = ?').get(row.user_id || row.actor_id);
-  return { ...row, alias: a?.alias || null };
-});
+// Enrich rows with alias (batch lookup to avoid N+1)
+const withAlias = (rows) => {
+  if (rows.length === 0) return rows;
+  const userIds = [...new Set(rows.map(r => r.user_id || r.actor_id).filter(Boolean))];
+  if (userIds.length === 0) return rows;
+  const placeholders = userIds.map(() => '?').join(',');
+  const aliasRows = db.prepare(`SELECT user_id, alias FROM alias WHERE user_id IN (${placeholders})`).all(...userIds);
+  const aliasMap = Object.fromEntries(aliasRows.map(a => [a.user_id, a.alias]));
+  return rows.map(row => ({ ...row, alias: aliasMap[row.user_id || row.actor_id] || null }));
+};
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 // clerkMiddleware() is applied globally above; getAuth(req) extracts userId
@@ -934,20 +948,15 @@ app.get('/api/wishlist/:alias', (req, res) => {
 // List comments for a comic entry (by comic ID)
 app.get('/api/comics/:id/comments', (req, res) => {
   const rows = db.prepare(`
-    SELECT c.*, a.alias
+    SELECT c.*, a.alias,
+      (SELECT COUNT(*) FROM comment_reactions WHERE comment_id=c.id AND type='like') as likes,
+      (SELECT COUNT(*) FROM comment_reactions WHERE comment_id=c.id AND type='dislike') as dislikes
     FROM comments c
     LEFT JOIN alias a ON a.user_id = c.user_id
     WHERE c.comic_id = ?
     ORDER BY c.created_at ASC
   `).all(req.params.id);
-
-  // Attach reaction counts
-  const enriched = rows.map(c => {
-    const likes = db.prepare("SELECT COUNT(*) n FROM comment_reactions WHERE comment_id=? AND type='like'").get(c.id).n;
-    const dislikes = db.prepare("SELECT COUNT(*) n FROM comment_reactions WHERE comment_id=? AND type='dislike'").get(c.id).n;
-    return { ...c, likes, dislikes };
-  });
-  res.json(enriched);
+  res.json(rows);
 });
 
 // Add a comment
@@ -1134,5 +1143,44 @@ function buildDetailedStats(uid, res) {
     pace: pace.reverse(), ratingDist, topTags,
   });
 }
+
+// ── Cover lookup proxy (caches to avoid repeated Open Library calls) ──────────
+const coverCache = new Map(); // title -> { url, ts }
+app.get('/api/cover-lookup', apiLimit, async (req, res) => {
+  const title = (req.query.title || '').trim();
+  const author = (req.query.author || '').trim();
+  if (!title) return res.json({ cover: null });
+
+  const cacheKey = `${title}||${author}`.toLowerCase();
+  const cached = coverCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < 86400000) return res.json({ cover: cached.url });
+
+  try {
+    const q = encodeURIComponent(`${title} ${author} comic`.trim());
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000); // 5s timeout
+    const r = await fetch(`https://openlibrary.org/search.json?q=${q}&fields=cover_i,title&limit=5`, { signal: controller.signal });
+    clearTimeout(timeout);
+    const data = await r.json();
+    const hit = data.docs?.find(d => d.cover_i);
+    const url = hit?.cover_i ? `https://covers.openlibrary.org/b/id/${hit.cover_i}-M.jpg` : null;
+    coverCache.set(cacheKey, { url, ts: Date.now() });
+    // Also update catalog entry if it exists
+    if (url) {
+      db.prepare('UPDATE comic_catalog SET cover_image=? WHERE LOWER(title)=LOWER(?) AND cover_image=""').run(url, title);
+    }
+    res.json({ cover: url });
+  } catch {
+    res.json({ cover: null });
+  }
+});
+
+// Clean cover cache every hour
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of coverCache) {
+    if (now - val.ts > 86400000) coverCache.delete(key);
+  }
+}, 3600000);
 
 app.listen(PORT, () => console.log(`\n⚡ EXCELSIOR! API → http://localhost:${PORT}\n`));

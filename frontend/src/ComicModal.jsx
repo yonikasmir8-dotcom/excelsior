@@ -37,12 +37,12 @@ function StarRow({ label, value, hover, onHover, onLeave, onChange, onClear }) {
   return (
     <div style={{ marginBottom: '0.5rem' }}>
       <label style={{ ...lbl, marginBottom: '0.2rem' }}>{label}</label>
-      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }} onMouseLeave={onLeave}>
+      <div style={{ display: 'flex', gap: '0px', alignItems: 'center' }} onMouseLeave={onLeave}>
         {[1,2,3,4,5].map(n => (
           <span key={n}
             onMouseEnter={() => onHover(n)}
             onClick={() => onChange(n)}
-            style={{ fontSize: '1.3rem', cursor: 'pointer', color: n <= (hover || value) ? 'var(--yellow)' : 'var(--border)', transition: 'color 0.1s', WebkitTapHighlightColor: 'transparent', lineHeight: 1 }}>★</span>
+            style={{ fontSize: '1.6rem', cursor: 'pointer', color: n <= (hover || value) ? 'var(--yellow)' : 'var(--border)', transition: 'color 0.1s, transform 0.1s', WebkitTapHighlightColor: 'transparent', lineHeight: 1, padding: '0.3rem 0.2rem' }}>★</span>
         ))}
         {value > 0 && (
           <button onClick={onClear} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.55rem', letterSpacing: '0.06em', textTransform: 'uppercase', paddingLeft: '0.3rem', minHeight: 'unset' }}>✕</button>
@@ -289,7 +289,7 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
               boxShadow: '4px 4px 0 rgba(0,0,0,0.5)', overflow: 'hidden', position: 'relative',
             }}>
               {form.cover_image
-                ? <img src={form.cover_image} alt="cover" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => set('cover_image', '')} />
+                ? <img src={form.cover_image} alt="cover" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => set('cover_image', '')} />
                 : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Bangers', cursive", fontSize: '0.6rem', textAlign: 'center', padding: '0.4rem', color: 'rgba(255,255,255,0.9)', lineHeight: 1.3 }}>
                     {form.title || 'Cover'}
                   </div>
@@ -314,7 +314,7 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
                 {/* Catalog search dropdown */}
                 {showResults && searchResults.length > 0 && (
                   <div ref={dropdownRef} style={{
-                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 60,
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 600,
                     background: 'var(--dark)', border: '2px solid var(--border)', borderRadius: '3px',
                     maxHeight: '220px', overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
                   }}>
@@ -331,7 +331,7 @@ export default function ComicModal({ initial = null, onSave, onClose, onDelete }
                         onMouseLeave={e => e.currentTarget.style.background = 'none'}
                       >
                         {r.cover_image
-                          ? <img src={r.cover_image} alt="" style={{ width: '28px', height: '40px', objectFit: 'cover', borderRadius: '2px', flexShrink: 0 }} />
+                          ? <img src={r.cover_image} alt="" loading="lazy" style={{ width: '28px', height: '40px', objectFit: 'cover', borderRadius: '2px', flexShrink: 0 }} />
                           : <div style={{ width: '28px', height: '40px', background: 'var(--border)', borderRadius: '2px', flexShrink: 0 }} />
                         }
                         <div style={{ minWidth: 0 }}>

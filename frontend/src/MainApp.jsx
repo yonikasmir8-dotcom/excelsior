@@ -32,7 +32,7 @@ function CoverBlock({ comic, w = 88, h = 120 }) {
       boxShadow: '4px 4px 0 rgba(0,0,0,0.55)', overflow: 'hidden', position: 'relative',
     }}>
       {comic.cover_image && !imgErr
-        ? <img src={comic.cover_image} alt={comic.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setImgErr(true)} />
+        ? <img src={comic.cover_image} alt={comic.title} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setImgErr(true)} />
         : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontFamily: "'Bangers', cursive", fontSize: '0.65rem', textAlign: 'center',
             padding: '0.5rem', color: 'rgba(255,255,255,0.9)', lineHeight: 1.3 }}>
@@ -58,7 +58,7 @@ function CoverBlock({ comic, w = 88, h = 120 }) {
 // Bottom tab bar — shown on mobile only
 function BottomNav({ view, setView, onAdd, notifCount }) {
   const tabs = [
-    { v: 'diary',    icon: '📖', label: 'Log' },
+    { v: 'diary',    icon: '📖', label: 'Diary' },
     { v: 'add',      icon: '＋',  label: 'Log Comic', isAction: true },
     { v: 'shelf',    icon: '📚', label: 'Collection' },
     { v: 'discover', icon: '🔍', label: 'Discover' },
@@ -184,7 +184,10 @@ export default function MainApp({ alias }) {
     setTimeout(() => setProfileCopied(false), 2500)
   }
 
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3500) }
+  const showToast = (msg) => {
+    const prefix = msg.startsWith('Error') || msg.startsWith('Save failed') ? 'BAM! ' : msg.includes('Removed') ? 'POOF! ' : msg.includes('Copied') ? 'ZAP! ' : 'POW! '
+    setToast(prefix + msg); setTimeout(() => setToast(''), 3500)
+  }
 
   const handleSave = async (data) => {
     try {
@@ -325,7 +328,7 @@ export default function MainApp({ alias }) {
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
                       {c.cover_image
-                        ? <img src={c.cover_image} alt="" style={{ width: '28px', height: '40px', objectFit: 'cover', borderRadius: '2px', flexShrink: 0 }} />
+                        ? <img src={c.cover_image} alt="" loading="lazy" style={{ width: '28px', height: '40px', objectFit: 'cover', borderRadius: '2px', flexShrink: 0 }} />
                         : <div style={{ width: '28px', height: '40px', background: 'var(--border)', borderRadius: '2px', flexShrink: 0 }} />
                       }
                       <div style={{ minWidth: 0, flex: 1 }}>
@@ -441,7 +444,17 @@ export default function MainApp({ alias }) {
             </div>
 
             {loading ? <Spinner /> : readComics.length === 0 ? (
-              <EmptyState icon="📚" title="No issues logged yet!" sub={isMobile ? 'Tap + below to start' : 'Hit "+ Log a Comic" to start'} />
+              <div style={{ textAlign: 'center', padding: '3rem 2rem', border: '2px dashed var(--border)', borderRadius: '4px', background: 'var(--panel)' }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem', opacity: 0.4 }}>📚</div>
+                <div style={{ fontFamily: "'Bangers', cursive", fontSize: '1.4rem', letterSpacing: '0.05em', color: 'var(--muted)', marginBottom: '0.35rem' }}>No issues logged yet!</div>
+                <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.65rem', letterSpacing: '0.1em', textTransform: 'uppercase', color: '#444', marginBottom: '1.25rem' }}>Your reading journey starts here</div>
+                <button onClick={() => { setEditing(null); setShowAdd(true) }} style={{
+                  background: 'var(--red)', color: 'var(--white)', border: 'none',
+                  borderBottom: '3px solid rgba(0,0,0,0.3)', fontFamily: "'Bangers', cursive",
+                  fontSize: '1.1rem', letterSpacing: '0.08em', padding: '0.7rem 2rem',
+                  borderRadius: '3px', cursor: 'pointer',
+                }}>+ Log Your First Comic</button>
+              </div>
             ) : readComics.map((c, i) => (
               <div key={c.id} className="anim-up" style={{
                 animationDelay: `${i * 0.04}s`,
@@ -451,12 +464,12 @@ export default function MainApp({ alias }) {
                 padding: isMobile ? '0.9rem 0.75rem' : '1.25rem 1rem',
                 marginBottom: '0.5rem',
                 background: 'var(--panel)', border: '2px solid var(--border)', borderLeft: '4px solid var(--red)',
-                borderRadius: '3px', cursor: 'pointer', transition: 'border-color 0.15s',
+                borderRadius: '3px', cursor: 'pointer', transition: 'border-color 0.15s, transform 0.15s, box-shadow 0.15s',
                 WebkitTapHighlightColor: 'transparent',
               }}
                 onClick={() => setDetail(c)}
-                onMouseEnter={e => { if (!isMobile) { e.currentTarget.style.borderColor = 'var(--yellow)'; e.currentTarget.style.borderLeftColor = 'var(--yellow)' } }}
-                onMouseLeave={e => { if (!isMobile) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.borderLeftColor = 'var(--red)' } }}
+                onMouseEnter={e => { if (!isMobile) { e.currentTarget.style.borderColor = 'var(--yellow)'; e.currentTarget.style.borderLeftColor = 'var(--yellow)'; e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(212,43,43,0.2)' } }}
+                onMouseLeave={e => { if (!isMobile) { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.borderLeftColor = 'var(--red)'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none' } }}
               >
                 <CoverBlock comic={c} w={isMobile ? 72 : 88} h={isMobile ? 100 : 120} />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.28rem', justifyContent: 'center', minWidth: 0, overflow: 'hidden' }}>
@@ -519,7 +532,7 @@ export default function MainApp({ alias }) {
                       display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative',
                     }}>
                       {c.cover_image
-                        ? <img src={c.cover_image} alt={c.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => e.target.style.display = 'none'} />
+                        ? <img src={c.cover_image} alt={c.title} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => e.target.style.display = 'none'} />
                         : <div style={{ fontFamily: "'Bangers', cursive", fontSize: '0.75rem', textAlign: 'center', padding: '0.5rem', color: 'rgba(255,255,255,0.9)', lineHeight: 1.3 }}>{c.title}</div>
                       }
                       <div style={{ position: 'absolute', bottom: 4, right: 4, background: SHELF_COLOR[c.shelf], color: 'var(--white)', fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 700, fontSize: '0.46rem', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.12rem 0.32rem', borderRadius: '2px' }}>{SHELF_LABEL[c.shelf]}</div>

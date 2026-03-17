@@ -47,11 +47,22 @@ function useHashRoute() {
 
 export default function App() {
   const hash = useHashRoute()
+  const { isLoaded } = useAuth()
 
   // Public profile route — no login required
   const profileMatch = hash.match(/^#\/u\/([a-z0-9_-]+)$/i)
   if (profileMatch) {
     return <ErrorBoundary><PublicProfile alias={profileMatch[1].toLowerCase()} /></ErrorBoundary>
+  }
+
+  // Show loading screen while Clerk initializes to prevent auth flicker
+  if (!isLoaded) {
+    return (
+      <div style={{ minHeight:'100vh', background:'#0d0d0d', display:'flex', alignItems:'center', justifyContent:'center', flexDirection:'column', gap:'1rem' }}>
+        <div style={{ fontFamily:"'Bangers',cursive", fontSize:'3rem', color:'#f5d800', textShadow:'3px 3px 0 #d42b2b', animation:'bang 2s ease-in-out infinite' }}>EXCELSIOR!</div>
+        <div style={{ fontFamily:"'Barlow Condensed',sans-serif", fontSize:'0.7rem', color:'#777', letterSpacing:'0.15em', textTransform:'uppercase' }}>Loading…</div>
+      </div>
+    )
   }
 
   return (

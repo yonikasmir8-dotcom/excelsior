@@ -35,6 +35,9 @@ desktop.ini
 npm-debug.log*
 yarn-debug.log*
 
+# ── Local helper scripts ─────────────────────────────────────────────────────
+*.bat
+
 # ── Railway / Vercel ──────────────────────────────────────────────────────────
 .vercel
 .railway

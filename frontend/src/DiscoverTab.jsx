@@ -14,7 +14,7 @@ function CoverCard({ comic, w = 100, h = 140 }) {
       boxShadow: '4px 4px 0 rgba(0,0,0,0.55)', overflow: 'hidden', position: 'relative',
     }}>
       {comic.cover_image && !imgErr
-        ? <img src={comic.cover_image} alt={comic.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setImgErr(true)} />
+        ? <img src={comic.cover_image} alt={comic.title} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setImgErr(true)} />
         : <div style={{
             width: '100%', height: '100%', display: 'flex', alignItems: 'center',
             justifyContent: 'center', fontFamily: "'Bangers', cursive", fontSize: '0.7rem',

@@ -17,7 +17,7 @@ function MiniCover({ comic, size = 52 }) {
       boxShadow: '3px 3px 0 rgba(0,0,0,0.5)', overflow: 'hidden',
     }}>
       {comic.cover_image && !err
-        ? <img src={comic.cover_image} alt={comic.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setErr(true)} />
+        ? <img src={comic.cover_image} alt={comic.title} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setErr(true)} />
         : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Bangers', cursive", fontSize: '0.58rem', textAlign: 'center', padding: '0.3rem', color: 'rgba(255,255,255,0.9)', lineHeight: 1.25 }}>{comic.title}</div>
       }
     </div>

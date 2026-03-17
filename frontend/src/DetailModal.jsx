@@ -173,7 +173,7 @@ export default function DetailModal({ comic, onClose, onEdit, onDelete }) {
               boxShadow: '5px 5px 0 rgba(0,0,0,0.6)', overflow: 'hidden', position: 'relative',
             }}>
               {comic.cover_image
-                ? <img src={comic.cover_image} alt={comic.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => e.target.style.display = 'none'} />
+                ? <img src={comic.cover_image} alt={comic.title} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => e.target.style.display = 'none'} />
                 : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Bangers', cursive", fontSize: '0.78rem', textAlign: 'center', padding: '0.6rem', color: 'rgba(255,255,255,0.9)', lineHeight: 1.3 }}>{comic.title}</div>
               }
             </div>
