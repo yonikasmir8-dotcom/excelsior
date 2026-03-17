@@ -243,7 +243,7 @@ export default function MainApp({ alias }) {
         {/* Desktop nav — hidden on mobile (replaced by bottom bar) */}
         {!isMobile && (
           <nav style={{ display: 'flex' }}>
-            {[['diary', 'Log'], ['shelf', 'Collection'], ['discover', 'Discover'], ['friends', 'Friends'], ['stats', 'Stats']].map(([v, label]) => (
+            {[['diary', 'Diary'], ['shelf', 'Collection'], ['discover', 'Discover'], ['friends', 'Friends'], ['stats', 'Stats']].map(([v, label]) => (
               <button key={v} onClick={() => setView(v)} style={{
                 background: view === v ? 'rgba(0,0,0,0.25)' : 'none',
                 border: 'none', borderLeft: '2px solid rgba(0,0,0,0.2)',
