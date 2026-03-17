@@ -214,7 +214,7 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <a href={`#/u/${u.alias}`} style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, fontSize: '1.05rem', color: 'var(--white)', textDecoration: 'none', letterSpacing: '0.02em' }}>{u.alias}</a>
                         <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.62rem', color: 'var(--muted)', marginTop: '0.1rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                          {u.read_count} issues read
+                          {u.read_count} {u.read_count === 1 ? 'issue' : 'issues'} read
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -252,7 +252,7 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <a href={`#/u/${u.alias}`} style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, fontSize: '1.05rem', color: 'var(--white)', textDecoration: 'none', letterSpacing: '0.02em' }}>{u.alias}</a>
                         <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.62rem', color: 'var(--muted)', marginTop: '0.1rem', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                          {u.read_count} issues read
+                          {u.read_count} {u.read_count === 1 ? 'issue' : 'issues'} read
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>

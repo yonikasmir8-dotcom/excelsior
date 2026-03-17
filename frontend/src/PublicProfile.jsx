@@ -228,7 +228,7 @@ export default function PublicProfile({ alias }) {
                 color: 'var(--muted)', letterSpacing: '0.15em', textTransform: 'uppercase',
                 marginTop: '0.4rem',
               }}>
-                Excelsior! Member · {stats.read} issues read
+                Excelsior! Member · {stats.read} {stats.read === 1 ? 'issue' : 'issues'} read
               </div>
             </div>
 

@@ -612,7 +612,7 @@ export default function MainApp({ alias }) {
 
             <div style={{ background: 'var(--panel)', border: '2px solid var(--border)', borderRadius: '3px', padding: '1.1rem 1.25rem', marginBottom: '0.75rem' }}>
               <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.6rem', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--muted)', marginBottom: '0.5rem' }}>Total Collection</div>
-              <div style={{ fontFamily: "'Bangers', cursive", fontSize: isMobile ? '1.6rem' : '2rem', color: 'var(--white)', letterSpacing: '0.04em' }}>{stats.read + stats.reading + stats.want} issues tracked</div>
+              <div style={{ fontFamily: "'Bangers', cursive", fontSize: isMobile ? '1.6rem' : '2rem', color: 'var(--white)', letterSpacing: '0.04em' }}>{stats.read + stats.reading + stats.want} {(stats.read + stats.reading + stats.want) === 1 ? 'issue' : 'issues'} tracked</div>
             </div>
 
             <button onClick={() => setShowDetailedStats(true)} style={{
