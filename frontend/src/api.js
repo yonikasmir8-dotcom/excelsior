@@ -69,6 +69,7 @@ export async function fetchCoverImage(title, author = '') {
   try {
     const params = new URLSearchParams({ title, author })
     const res = await fetch(`${BASE}/cover-lookup?${params}`)
+    if (!res.ok) return null
     const data = await res.json()
     return data.cover || null
   } catch {
