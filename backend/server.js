@@ -203,14 +203,20 @@ try {
 // Make rating column REAL if it was INTEGER (for averages)
 // SQLite is flexible with types so this works without ALTER
 
-// ── Seed catalog if empty ────────────────────────────────────────────────────
+// ── Seed catalog if empty or outdated ─────────────────────────────────────────
 const catalogCount = db.prepare('SELECT COUNT(*) n FROM comic_catalog').get().n;
-if (catalogCount === 0) {
-  const seedPath = path.join(__dirname, 'seed-catalog.json');
-  if (fs.existsSync(seedPath)) {
-    const seed = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
+const seedPath = path.join(__dirname, 'seed-catalog.json');
+if (fs.existsSync(seedPath)) {
+  const seed = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
+  // Re-seed if catalog is empty OR significantly smaller than the seed file
+  if (catalogCount === 0 || (seed.length > 1000 && catalogCount < seed.length * 0.5)) {
+    // Clear old catalog entries (keep user-added ones by checking if any comics reference them)
+    if (catalogCount > 0) {
+      db.exec('DELETE FROM comic_catalog WHERE id NOT IN (SELECT DISTINCT catalog_id FROM comics WHERE catalog_id IS NOT NULL)');
+      console.log(`🗑️  Cleared old catalog entries (kept user-referenced ones)`);
+    }
     const insert = db.prepare(`
-      INSERT INTO comic_catalog (title, issue_num, publisher, writer, artist, cover_image, tags)
+      INSERT OR IGNORE INTO comic_catalog (title, issue_num, publisher, writer, artist, cover_image, tags)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     const insertMany = db.transaction((comics) => {
@@ -220,7 +226,8 @@ if (catalogCount === 0) {
       }
     });
     insertMany(seed);
-    console.log(`📚 Seeded catalog with ${seed.length} comics`);
+    const newCount = db.prepare('SELECT COUNT(*) n FROM comic_catalog').get().n;
+    console.log(`📚 Seeded catalog: ${catalogCount} → ${newCount} comics`);
   }
 }
 
