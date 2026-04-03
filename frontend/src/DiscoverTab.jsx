@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@clerk/clerk-react'
 import { api, amazonUrl } from './api.js'
 
@@ -95,6 +95,7 @@ export default function DiscoverTab({ isMobile }) {
     }).finally(() => setLoading(false))
   }, [gt])
 
+  const seriesTimer = useRef(null)
   const loadSeries = useCallback(async (q, append = false) => {
     setSeriesLoading(true)
     try {
@@ -279,7 +280,14 @@ export default function DiscoverTab({ isMobile }) {
         {/* Search */}
         <input
           value={seriesQuery}
-          onChange={e => { setSeriesQuery(e.target.value); if (e.target.value.length >= 2 || e.target.value.length === 0) loadSeries(e.target.value) }}
+          onChange={e => {
+            const v = e.target.value
+            setSeriesQuery(v)
+            clearTimeout(seriesTimer.current)
+            seriesTimer.current = setTimeout(() => {
+              if (v.length >= 2 || v.length === 0) loadSeries(v)
+            }, 350)
+          }}
           placeholder="Search series..."
           style={{
             width: '100%', maxWidth: '360px', marginBottom: '1rem',
@@ -329,6 +337,16 @@ export default function DiscoverTab({ isMobile }) {
                         <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.52rem', color: 'var(--muted)', marginTop: '0.2rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {issue.issue_num || '#?'}
                         </div>
+                        <a href={amazonUrl(issue.title, issue.issue_num, issue.publisher)} target="_blank" rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          style={{
+                            display: 'inline-block', marginTop: '0.2rem',
+                            background: '#ff9900', color: 'var(--ink)',
+                            fontFamily: "'Bangers', cursive", fontSize: '0.5rem',
+                            letterSpacing: '0.03em', padding: '0.15rem 0.4rem',
+                            borderRadius: '2px', textDecoration: 'none',
+                            boxShadow: '0 1px 0 #cc7a00',
+                          }}>Buy</a>
                       </div>
                     ))}
                     {expandedIssues.length === 0 && (
