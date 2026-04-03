@@ -205,11 +205,19 @@ try {
 
 // ── Seed catalog if empty or outdated ─────────────────────────────────────────
 const catalogCount = db.prepare('SELECT COUNT(*) n FROM comic_catalog').get().n;
+const uniqueCovers = db.prepare("SELECT COUNT(DISTINCT cover_image) n FROM comic_catalog WHERE cover_image != ''").get().n;
 const seedPath = path.join(__dirname, 'seed-catalog.json');
 if (fs.existsSync(seedPath)) {
   const seed = JSON.parse(fs.readFileSync(seedPath, 'utf-8'));
-  // Re-seed if catalog is empty OR significantly smaller than the seed file
-  if (catalogCount === 0 || (seed.length > 1000 && catalogCount < seed.length * 0.5)) {
+  const seedUniqueCovers = new Set(seed.filter(c => c.cover_image).map(c => c.cover_image)).size;
+
+  // Re-seed if: catalog is empty, significantly smaller, OR has far fewer unique covers (cover upgrade)
+  const needsReseed = catalogCount === 0
+    || (seed.length > 1000 && catalogCount < seed.length * 0.5)
+    || (seedUniqueCovers > uniqueCovers * 2);
+
+  if (needsReseed) {
+    console.log(`📚 Catalog reseed triggered: DB has ${catalogCount} entries / ${uniqueCovers} unique covers; seed has ${seed.length} entries / ${seedUniqueCovers} unique covers`);
     // Clear old catalog entries (keep user-added ones by checking if any comics reference them)
     if (catalogCount > 0) {
       db.exec('DELETE FROM comic_catalog WHERE id NOT IN (SELECT DISTINCT catalog_id FROM comics WHERE catalog_id IS NOT NULL)');
@@ -227,7 +235,8 @@ if (fs.existsSync(seedPath)) {
     });
     insertMany(seed);
     const newCount = db.prepare('SELECT COUNT(*) n FROM comic_catalog').get().n;
-    console.log(`📚 Seeded catalog: ${catalogCount} → ${newCount} comics`);
+    const newCovers = db.prepare("SELECT COUNT(DISTINCT cover_image) n FROM comic_catalog WHERE cover_image != ''").get().n;
+    console.log(`📚 Seeded catalog: ${catalogCount} → ${newCount} comics, ${uniqueCovers} → ${newCovers} unique covers`);
   }
 }
 
@@ -527,16 +536,20 @@ app.get('/api/alias/mine', apiAuth, (req, res) => {
 // ── Comics ─────────────────────────────────────────────────────────────────────
 app.get('/api/comics', apiAuth, (req, res) => {
   const { shelf, sort = 'created_at', order = 'desc' } = req.query;
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
   const safeSort  = ['created_at','date_read','title','rating'].includes(sort) ? sort : 'created_at';
   const safeOrder = ['asc','desc'].includes(order) ? order : 'desc';
   const uid = getAuth(req).userId;
   if (shelf && ['read','reading','want'].includes(shelf)) {
-    return res.json(
-      db.prepare(`SELECT * FROM comics WHERE user_id=? AND shelf=? ORDER BY ${safeSort} ${safeOrder}`)
-        .all(uid, shelf).map(parseTags)
-    );
+    const rows = db.prepare(`SELECT * FROM comics WHERE user_id=? AND shelf=? ORDER BY ${safeSort} ${safeOrder} LIMIT ? OFFSET ?`)
+      .all(uid, shelf, limit, offset).map(parseTags);
+    const total = db.prepare("SELECT COUNT(*) n FROM comics WHERE user_id=? AND shelf=?").get(uid, shelf).n;
+    return res.json({ items: rows, total, hasMore: offset + rows.length < total });
   }
-  res.json(db.prepare(`SELECT * FROM comics WHERE user_id=? ORDER BY ${safeSort} ${safeOrder}`).all(uid).map(parseTags));
+  const rows = db.prepare(`SELECT * FROM comics WHERE user_id=? ORDER BY ${safeSort} ${safeOrder} LIMIT ? OFFSET ?`).all(uid, limit, offset).map(parseTags);
+  const total = db.prepare("SELECT COUNT(*) n FROM comics WHERE user_id=?").get(uid).n;
+  res.json({ items: rows, total, hasMore: offset + rows.length < total });
 });
 
 app.get('/api/comics/:id', apiAuth, (req, res) => {
@@ -725,6 +738,8 @@ app.get('/api/followers', apiAuth, (req, res) => {
 
 app.get('/api/feed', apiAuth, (req, res) => {
   const uid = getAuth(req).userId;
+  const limit = Math.min(parseInt(req.query.limit) || 40, 100);
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
   const rows = db.prepare(`
     SELECT c.id, c.title, c.publisher, c.issue_num, c.rating, c.rating_plot, c.rating_art, c.rating_writing,
            c.cover_color, c.cover_image,
@@ -736,13 +751,15 @@ app.get('/api/feed', apiAuth, (req, res) => {
     WHERE f.follower_id = ?
       AND c.shelf IN ('read','reading')
     ORDER BY c.created_at DESC
-    LIMIT 40
-  `).all(uid).map(parseTags);
-  res.json(rows);
+    LIMIT ? OFFSET ?
+  `).all(uid, limit, offset).map(parseTags);
+  res.json({ items: rows, hasMore: rows.length === limit });
 });
 
 // ── Global feed (recent activity from all users) ─────────────────────────────
 app.get('/api/feed/global', (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 40, 100);
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
   const rows = db.prepare(`
     SELECT c.id, c.title, c.publisher, c.issue_num, c.rating, c.rating_plot, c.rating_art, c.rating_writing,
            c.cover_color, c.cover_image,
@@ -752,9 +769,9 @@ app.get('/api/feed/global', (req, res) => {
     JOIN alias a ON a.user_id = c.user_id
     WHERE c.shelf IN ('read','reading')
     ORDER BY c.created_at DESC
-    LIMIT 40
-  `).all().map(parseTags);
-  res.json(rows);
+    LIMIT ? OFFSET ?
+  `).all(limit, offset).map(parseTags);
+  res.json({ items: rows, hasMore: rows.length === limit });
 });
 
 // ── Notifications ─────────────────────────────────────────────────────────────
@@ -766,17 +783,19 @@ app.get('/api/notifications/count', apiAuth, (req, res) => {
 
 app.get('/api/notifications', apiAuth, (req, res) => {
   const uid = getAuth(req).userId;
+  const limit = Math.min(parseInt(req.query.limit) || 30, 100);
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
   const rows = db.prepare(`
     SELECT n.*, a.alias as actor_alias
     FROM notifications n
     LEFT JOIN alias a ON a.user_id = n.actor_id
     WHERE n.user_id = ?
     ORDER BY n.created_at DESC
-    LIMIT 30
-  `).all(uid);
+    LIMIT ? OFFSET ?
+  `).all(uid, limit, offset);
 
-  db.prepare('UPDATE notifications SET read=1 WHERE user_id=? AND read=0').run(uid);
-  res.json(rows);
+  if (offset === 0) db.prepare('UPDATE notifications SET read=1 WHERE user_id=? AND read=0').run(uid);
+  res.json({ items: rows, hasMore: rows.length === limit });
 });
 
 // ── Public profile ─────────────────────────────────────────────────────────────
@@ -1150,6 +1169,55 @@ function buildDetailedStats(uid, res) {
     pace: pace.reverse(), ratingDist, topTags,
   });
 }
+
+// ── Series grouping ─────────────────────────────────────────────────────────
+// Group catalog entries by series name for browsing runs
+app.get('/api/series', (req, res) => {
+  const limit = Math.min(parseInt(req.query.limit) || 50, 200);
+  const offset = Math.max(parseInt(req.query.offset) || 0, 0);
+  const q = (req.query.q || '').trim();
+
+  let where = '';
+  const params = [];
+  if (q.length >= 2) {
+    where = 'WHERE LOWER(title) LIKE ?';
+    params.push(`%${q.toLowerCase()}%`);
+  }
+
+  const rows = db.prepare(`
+    SELECT title, publisher, MIN(cover_image) as cover_image,
+           COUNT(*) as issue_count, MIN(issue_num) as first_issue, MAX(issue_num) as last_issue,
+           GROUP_CONCAT(DISTINCT writer) as writers
+    FROM comic_catalog ${where}
+    GROUP BY LOWER(title), publisher
+    ORDER BY issue_count DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, offset);
+
+  const total = db.prepare(`SELECT COUNT(*) n FROM (SELECT 1 FROM comic_catalog ${where} GROUP BY LOWER(title), publisher)`).get(...params).n;
+
+  res.json({
+    items: rows.map(r => ({
+      ...r,
+      writers: r.writers ? [...new Set(r.writers.split(','))].slice(0, 3).join(', ') : ''
+    })),
+    total,
+    hasMore: offset + rows.length < total
+  });
+});
+
+// Get all issues in a series
+app.get('/api/series/:title', (req, res) => {
+  const title = decodeURIComponent(req.params.title);
+  const publisher = req.query.publisher || '';
+  let rows;
+  if (publisher) {
+    rows = db.prepare('SELECT * FROM comic_catalog WHERE LOWER(title)=LOWER(?) AND publisher=? ORDER BY CAST(issue_num AS INTEGER), issue_num').all(title, publisher);
+  } else {
+    rows = db.prepare('SELECT * FROM comic_catalog WHERE LOWER(title)=LOWER(?) ORDER BY CAST(issue_num AS INTEGER), issue_num').all(title);
+  }
+  res.json(rows);
+});
 
 // ── Cover lookup proxy (caches to avoid repeated Open Library calls) ──────────
 const coverCache = new Map(); // title -> { url, ts }

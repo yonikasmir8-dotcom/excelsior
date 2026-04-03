@@ -23,7 +23,14 @@ async function req(path, getToken, opts = {}) {
 
 export const api = {
   comics: {
-    list:   (gt, shelf)    => req('/comics' + (shelf && shelf !== 'all' ? `?shelf=${shelf}` : ''), gt),
+    list:   (gt, shelf, { limit=50, offset=0 }={}) => {
+      const params = new URLSearchParams()
+      if (shelf && shelf !== 'all') params.set('shelf', shelf)
+      if (limit !== 50) params.set('limit', limit)
+      if (offset) params.set('offset', offset)
+      const qs = params.toString()
+      return req('/comics' + (qs ? `?${qs}` : ''), gt)
+    },
     get:    (gt, id)       => req(`/comics/${id}`, gt),
     create: (gt, data)     => req('/comics', gt, { method: 'POST', body: JSON.stringify(data) }),
     update: (gt, id, data) => req(`/comics/${id}`, gt, { method: 'PUT', body: JSON.stringify(data) }),
@@ -43,12 +50,16 @@ export const api = {
   tags: () => fetch(`${BASE}/tags`).then(r => r.json()),
   similarRaters: (gt) => req('/similar-raters', gt),
   trending: () => fetch(`${BASE}/trending`).then(r => r.json()),
-  globalFeed: () => fetch(`${BASE}/feed/global`).then(r => r.json()),
+  globalFeed: (offset=0) => fetch(`${BASE}/feed/global?offset=${offset}`).then(r => r.json()),
   recommendations: (gt) => req('/recommendations', gt),
   wishlist: (alias) => fetch(`${BASE}/wishlist/${alias}`).then(r => r.json()),
   search: (q, type='all') => fetch(`${BASE}/search?q=${encodeURIComponent(q)}&type=${type}`).then(r => r.json()),
   characters: {
     search: (q) => fetch(`${BASE}/characters/search?q=${encodeURIComponent(q)}`).then(r => r.json()),
+  },
+  series: {
+    list: (q='', offset=0) => fetch(`${BASE}/series?q=${encodeURIComponent(q)}&offset=${offset}`).then(r => r.json()),
+    get:  (title, publisher='') => fetch(`${BASE}/series/${encodeURIComponent(title)}?publisher=${encodeURIComponent(publisher)}`).then(r => r.json()),
   },
   eras: () => fetch(`${BASE}/eras`).then(r => r.json()),
   comicCharacters: (id) => fetch(`${BASE}/comics/${id}/characters`).then(r => r.json()),
@@ -104,7 +115,7 @@ export const social = {
   unfollow:   (gt, alias)  => req(`/follow/${alias}`, gt, { method: 'DELETE' }),
   following:  (gt)         => req('/following', gt),
   followers:  (gt)         => req('/followers', gt),
-  feed:       (gt)         => req('/feed', gt),
+  feed:       (gt, offset=0) => req(`/feed?offset=${offset}`, gt),
   notifCount: (gt)         => req('/notifications/count', gt),
-  notifs:     (gt)         => req('/notifications', gt),
+  notifs:     (gt, offset=0) => req(`/notifications?offset=${offset}`, gt),
 }

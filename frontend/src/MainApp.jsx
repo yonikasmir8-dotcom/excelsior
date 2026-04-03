@@ -106,6 +106,8 @@ export default function MainApp({ alias }) {
   const [comics, setComics]         = useState([])
   const [stats, setStats]           = useState(null)
   const [loading, setLoading]       = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore]       = useState(false)
   const [shelfFilter, setShelfFilter] = useState('all')
   const [showAdd, setShowAdd]       = useState(false)
   const [editing, setEditing]       = useState(null)
@@ -114,6 +116,7 @@ export default function MainApp({ alias }) {
   const [toast, setToast]           = useState('')
   const [profileCopied, setProfileCopied] = useState(false)
   const [notifCount, setNotifCount]         = useState(0)
+  const [confirmDelete, setConfirmDelete]   = useState(null)
 
   // Global search state
   const [searchQuery, setSearchQuery]     = useState('')
@@ -158,18 +161,23 @@ export default function MainApp({ alias }) {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const load = useCallback(async (filter) => {
-    setLoading(true)
+  const load = useCallback(async (filter, append = false) => {
+    if (append) setLoadingMore(true); else setLoading(true)
     try {
+      const offset = append ? comics.length : 0
       const [data, s] = await Promise.all([
-        api.comics.list(gt, filter === 'all' ? null : filter),
-        api.stats(gt)
+        api.comics.list(gt, filter === 'all' ? null : filter, { offset }),
+        append ? Promise.resolve(stats) : api.stats(gt)
       ])
-      setComics(data)
+      // Handle paginated response {items, total, hasMore} or legacy array
+      const items = data.items || data
+      const more = data.hasMore ?? false
+      setComics(prev => append ? [...prev, ...items] : items)
+      setHasMore(more)
       setStats(s)
     } catch (e) { showToast('Error: ' + e.message) }
-    finally { setLoading(false) }
-  }, [gt])
+    finally { setLoading(false); setLoadingMore(false) }
+  }, [gt, comics.length, stats])
 
   useEffect(() => {
     if (view === 'friends' || view === 'discover') return // These tabs manage their own data
@@ -202,12 +210,19 @@ export default function MainApp({ alias }) {
     }
   }
 
-  const handleDelete = async (id) => {
-    if (!confirm('Remove this comic?')) return
-    await api.comics.delete(gt, id)
-    setDetail(null)
-    load(view === 'shelf' ? shelfFilter : null)
-    showToast('Removed from collection')
+  const handleDelete = (id) => {
+    setConfirmDelete(id)
+  }
+
+  const executeDelete = async () => {
+    if (!confirmDelete) return
+    try {
+      await api.comics.delete(gt, confirmDelete)
+      setDetail(null)
+      setConfirmDelete(null)
+      load(view === 'shelf' ? shelfFilter : null)
+      showToast('Removed from collection')
+    } catch (e) { showToast('Error: ' + e.message) }
   }
 
   const openEdit = (comic) => { setEditing(comic); setDetail(null); setShowAdd(true) }
@@ -497,6 +512,15 @@ export default function MainApp({ alias }) {
                 </div>
               </div>
             ))}
+            {hasMore && view === 'diary' && (
+              <button onClick={() => load(null, true)} disabled={loadingMore} style={{
+                display: 'block', width: '100%', marginTop: '1.25rem',
+                background: 'var(--mid)', border: '2px solid var(--border)', borderBottom: '3px solid var(--border)',
+                borderRadius: '4px', padding: '0.9rem', cursor: loadingMore ? 'default' : 'pointer',
+                fontFamily: "'Bangers', cursive", fontSize: '1rem', color: 'var(--yellow)', letterSpacing: '0.05em',
+                textAlign: 'center', opacity: loadingMore ? 0.5 : 1,
+              }}>{loadingMore ? 'Loading...' : 'Load More'}</button>
+            )}
           </div>
         )}
 
@@ -558,6 +582,15 @@ export default function MainApp({ alias }) {
                   </div>
                 ))}
               </div>
+            )}
+            {hasMore && view === 'shelf' && !loading && (
+              <button onClick={() => load(shelfFilter, true)} disabled={loadingMore} style={{
+                display: 'block', width: '100%', marginTop: '1.25rem',
+                background: 'var(--mid)', border: '2px solid var(--border)', borderBottom: '3px solid var(--border)',
+                borderRadius: '4px', padding: '0.9rem', cursor: loadingMore ? 'default' : 'pointer',
+                fontFamily: "'Bangers', cursive", fontSize: '1rem', color: 'var(--yellow)', letterSpacing: '0.05em',
+                textAlign: 'center', opacity: loadingMore ? 0.5 : 1,
+              }}>{loadingMore ? 'Loading...' : 'Load More'}</button>
             )}
           </div>
         )}
@@ -693,6 +726,39 @@ export default function MainApp({ alias }) {
       }}>
         As an Amazon Associate, Excelsior! earns from qualifying purchases.
       </footer>
+
+      {/* ── CONFIRM DELETE MODAL ── */}
+      {confirmDelete && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 500,
+          display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center',
+        }} onClick={() => setConfirmDelete(null)}>
+          <div onClick={e => e.stopPropagation()} style={{
+            background: 'var(--panel)', border: '2px solid var(--border)',
+            borderTop: '4px solid var(--red)', borderRadius: isMobile ? '12px 12px 0 0' : '4px',
+            padding: '2rem 1.75rem', width: isMobile ? '100%' : '340px',
+            textAlign: 'center',
+          }}>
+            <div style={{ fontSize: '2rem', marginBottom: '0.75rem', opacity: 0.6 }}>🗑️</div>
+            <div style={{ fontFamily: "'Bangers', cursive", fontSize: '1.4rem', letterSpacing: '0.04em', color: 'var(--white)', marginBottom: '0.4rem' }}>Remove this comic?</div>
+            <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem', color: 'var(--muted)', letterSpacing: '0.06em', marginBottom: '1.5rem' }}>This action cannot be undone</div>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center' }}>
+              <button onClick={() => setConfirmDelete(null)} style={{
+                flex: 1, background: 'none', border: '2px solid var(--border)', color: 'var(--muted)',
+                fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.75rem', fontWeight: 700,
+                textTransform: 'uppercase', letterSpacing: '0.08em',
+                padding: '0.65rem 1.25rem', borderRadius: '3px', cursor: 'pointer',
+              }}>Cancel</button>
+              <button onClick={executeDelete} style={{
+                flex: 1, background: 'var(--red)', color: 'var(--white)', border: 'none',
+                borderBottom: '3px solid rgba(0,0,0,0.3)',
+                fontFamily: "'Bangers', cursive", fontSize: '1rem', letterSpacing: '0.06em',
+                padding: '0.65rem 1.25rem', borderRadius: '3px', cursor: 'pointer',
+              }}>Remove</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── TOAST ── */}
       <div style={{

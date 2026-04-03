@@ -74,17 +74,47 @@ export default function DiscoverTab({ isMobile }) {
   const [trending, setTrending] = useState([])
   const [recs, setRecs] = useState([])
   const [loading, setLoading] = useState(true)
+  const [series, setSeries] = useState([])
+  const [seriesQuery, setSeriesQuery] = useState('')
+  const [seriesHasMore, setSeriesHasMore] = useState(false)
+  const [seriesLoading, setSeriesLoading] = useState(false)
+  const [expandedSeries, setExpandedSeries] = useState(null)
+  const [expandedIssues, setExpandedIssues] = useState([])
 
   useEffect(() => {
     setLoading(true)
     Promise.all([
       api.trending().catch(() => []),
       api.recommendations(gt).catch(() => []),
-    ]).then(([t, r]) => {
+      api.series.list().catch(() => ({ items: [] })),
+    ]).then(([t, r, s]) => {
       setTrending(t)
       setRecs(r)
+      setSeries(s.items || [])
+      setSeriesHasMore(s.hasMore || false)
     }).finally(() => setLoading(false))
   }, [gt])
+
+  const loadSeries = useCallback(async (q, append = false) => {
+    setSeriesLoading(true)
+    try {
+      const offset = append ? series.length : 0
+      const data = await api.series.list(q, offset)
+      setSeries(prev => append ? [...prev, ...(data.items || [])] : (data.items || []))
+      setSeriesHasMore(data.hasMore || false)
+    } catch {}
+    setSeriesLoading(false)
+  }, [series.length])
+
+  const toggleSeries = async (s) => {
+    const key = `${s.title}||${s.publisher}`
+    if (expandedSeries === key) { setExpandedSeries(null); return }
+    setExpandedSeries(key)
+    try {
+      const issues = await api.series.get(s.title, s.publisher)
+      setExpandedIssues(issues)
+    } catch { setExpandedIssues([]) }
+  }
 
   if (loading) return (
     <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--muted)', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.75rem', letterSpacing: '0.15em', textTransform: 'uppercase' }}>
@@ -232,6 +262,93 @@ export default function DiscoverTab({ isMobile }) {
               </div>
             ))}
           </div>
+        )}
+      </section>
+
+      {/* ── SERIES BROWSER ── */}
+      <section style={{ marginBottom: '2.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.75rem', marginBottom: '1.1rem', paddingBottom: '0.5rem', borderBottom: '2px solid var(--border)' }}>
+          <h2 style={{ fontFamily: "'Bangers', cursive", fontSize: '1.5rem', letterSpacing: '0.04em', color: 'var(--white)', textShadow: '1px 1px 0 var(--red)', lineHeight: 1 }}>
+            Browse Series
+          </h2>
+          <span style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.6rem', color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            {series.length} runs
+          </span>
+        </div>
+
+        {/* Search */}
+        <input
+          value={seriesQuery}
+          onChange={e => { setSeriesQuery(e.target.value); if (e.target.value.length >= 2 || e.target.value.length === 0) loadSeries(e.target.value) }}
+          placeholder="Search series..."
+          style={{
+            width: '100%', maxWidth: '360px', marginBottom: '1rem',
+            background: 'var(--mid)', border: '2px solid var(--border)', borderRadius: '3px',
+            color: 'var(--white)', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.78rem',
+            padding: '0.5rem 0.75rem', outline: 'none',
+          }}
+        />
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+          {series.map((s, i) => {
+            const key = `${s.title}||${s.publisher}`
+            const isOpen = expandedSeries === key
+            return (
+              <div key={key + i}>
+                <div onClick={() => toggleSeries(s)} style={{
+                  display: 'grid', gridTemplateColumns: isMobile ? '48px 1fr auto' : '60px 1fr auto',
+                  gap: isMobile ? '0.65rem' : '0.85rem', alignItems: 'center',
+                  padding: isMobile ? '0.6rem' : '0.75rem 1rem',
+                  background: isOpen ? 'var(--mid)' : 'var(--panel)',
+                  border: `2px solid ${isOpen ? 'var(--yellow)' : 'var(--border)'}`,
+                  borderRadius: isOpen ? '3px 3px 0 0' : '3px',
+                  cursor: 'pointer', transition: 'border-color 0.15s',
+                }}>
+                  <CoverCard comic={s} w={isMobile ? 48 : 60} h={isMobile ? 67 : 84} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontWeight: 900, fontSize: isMobile ? '0.88rem' : '1rem', color: 'var(--white)', lineHeight: 1.15, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {s.title}
+                    </div>
+                    <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.62rem', color: 'var(--muted)', marginTop: '0.1rem' }}>
+                      {s.publisher} · {s.issue_count} {s.issue_count === 1 ? 'issue' : 'issues'}
+                      {s.writers && ` · ${s.writers}`}
+                    </div>
+                  </div>
+                  <div style={{ fontFamily: "'Bangers', cursive", fontSize: '1rem', color: 'var(--yellow)', transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>▶</div>
+                </div>
+                {isOpen && (
+                  <div style={{
+                    background: 'var(--mid)', border: '2px solid var(--yellow)', borderTop: 'none',
+                    borderRadius: '0 0 3px 3px', padding: '0.75rem',
+                    display: 'grid', gridTemplateColumns: `repeat(auto-fill, ${isMobile ? '58px' : '72px'})`,
+                    gap: '0.5rem',
+                  }}>
+                    {expandedIssues.map(issue => (
+                      <div key={issue.id} style={{ textAlign: 'center' }}>
+                        <CoverCard comic={issue} w={isMobile ? 58 : 72} h={isMobile ? 81 : 100} />
+                        <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.52rem', color: 'var(--muted)', marginTop: '0.2rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {issue.issue_num || '#?'}
+                        </div>
+                      </div>
+                    ))}
+                    {expandedIssues.length === 0 && (
+                      <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '1rem', fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.72rem', color: 'var(--muted)' }}>Loading issues...</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {seriesHasMore && (
+          <button onClick={() => loadSeries(seriesQuery, true)} disabled={seriesLoading} style={{
+            display: 'block', width: '100%', marginTop: '0.75rem',
+            background: 'var(--mid)', border: '2px solid var(--border)', borderBottom: '3px solid var(--border)',
+            borderRadius: '4px', padding: '0.75rem', cursor: seriesLoading ? 'default' : 'pointer',
+            fontFamily: "'Bangers', cursive", fontSize: '0.95rem', color: 'var(--yellow)', letterSpacing: '0.05em',
+            textAlign: 'center', opacity: seriesLoading ? 0.5 : 1,
+          }}>{seriesLoading ? 'Loading...' : 'Load More Series'}</button>
         )}
       </section>
 

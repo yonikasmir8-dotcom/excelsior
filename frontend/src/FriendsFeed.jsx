@@ -57,28 +57,46 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
   const [tab, setTab]             = useState('feed')
   const [feedMode, setFeedMode]   = useState('friends') // 'friends' or 'global'
   const [feed, setFeed]           = useState([])
+  const [feedHasMore, setFeedHasMore] = useState(false)
   const [following, setFollowing] = useState([])
   const [followers, setFollowers] = useState([])
   const [notifs, setNotifs]       = useState([])
+  const [notifsHasMore, setNotifsHasMore] = useState(false)
   const [loading, setLoading]     = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [error, setError]         = useState('')
 
-  const loadTab = useCallback(async (t) => {  // eslint-disable-line
-    setLoading(true)
+  const loadTab = useCallback(async (t, append = false) => {  // eslint-disable-line
+    if (append) setLoadingMore(true); else setLoading(true)
+    setError('')
     try {
-      if (t === 'feed')      {
-        if (feedMode === 'global') setFeed(await api.globalFeed())
-        else setFeed(await social.feed(gt))
+      if (t === 'feed') {
+        const offset = append ? feed.length : 0
+        const data = feedMode === 'global'
+          ? await api.globalFeed(offset)
+          : await social.feed(gt, offset)
+        const items = data.items || data
+        const more = data.hasMore ?? false
+        setFeed(prev => append ? [...prev, ...items] : items)
+        setFeedHasMore(more)
       }
       if (t === 'following') setFollowing(await social.following(gt))
       if (t === 'followers') setFollowers(await social.followers(gt))
       if (t === 'notifs') {
-        const data = await social.notifs(gt) // marks all read server-side
-        setNotifs(data)
-        if (onNotifsRead) onNotifsRead() // reset bell in parent
+        const offset = append ? notifs.length : 0
+        const data = await social.notifs(gt, offset)
+        const items = data.items || data
+        const more = data.hasMore ?? false
+        setNotifs(prev => append ? [...prev, ...items] : items)
+        setNotifsHasMore(more)
+        if (!append && onNotifsRead) onNotifsRead()
       }
-    } catch (e) { console.error(e) }
-    finally { setLoading(false) }
-  }, [gt, feedMode]) // gt is stable from useCallback above
+    } catch (e) {
+      console.error(e)
+      if (!append) setError('Failed to load. Please try again.')
+    }
+    finally { setLoading(false); setLoadingMore(false) }
+  }, [gt, feedMode, feed.length, notifs.length]) // gt is stable from useCallback above
 
   useEffect(() => { loadTab(tab) }, [tab, loadTab])
 
@@ -135,7 +153,18 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
         {tabBtn('notifs',    'Alerts',    unreadNotifs)}
       </div>
 
-      {loading ? <Spinner /> : (
+      {loading ? <Spinner /> : error ? (
+        <div style={{ textAlign: 'center', padding: '2rem', border: '2px dashed var(--border)', borderRadius: '4px', background: 'var(--panel)' }}>
+          <div style={{ fontSize: '2rem', marginBottom: '0.5rem', opacity: 0.4 }}>⚠️</div>
+          <div style={{ fontFamily: "'Barlow Condensed', sans-serif", fontSize: '0.82rem', color: 'var(--muted)', marginBottom: '1rem' }}>{error}</div>
+          <button onClick={() => loadTab(tab)} style={{
+            background: 'var(--red)', color: 'var(--white)', border: 'none',
+            borderBottom: '2px solid rgba(0,0,0,0.3)',
+            fontFamily: "'Bangers', cursive", fontSize: '0.95rem', letterSpacing: '0.06em',
+            padding: '0.5rem 1.5rem', borderRadius: '3px', cursor: 'pointer',
+          }}>Retry</button>
+        </div>
+      ) : (
         <>
           {/* ── ACTIVITY FEED ── */}
           {tab === 'feed' && (
@@ -160,7 +189,7 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
               ? <Empty icon={feedMode === 'global' ? '🌍' : '👥'} title="No activity yet" sub={feedMode === 'global' ? 'No one has logged comics yet — be the first!' : (following.length === 0 ? 'Follow some heroes to see their reading here' : 'The heroes you follow haven\'t logged anything yet')} />
               : <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {feed.map((c, i) => (
-                    <div key={`${c.user_id}-${c.id}`} className="anim-up" style={{ animationDelay: `${i * 0.03}s`,
+                    <div key={`${c.user_id}-${c.id}-${i}`} className="anim-up" style={{ animationDelay: `${Math.min(i, 10) * 0.03}s`,
                       display: 'grid', gridTemplateColumns: '38px 52px 1fr', gap: '0.85rem',
                       padding: '0.9rem', background: 'var(--panel)',
                       border: '2px solid var(--border)', borderLeft: `4px solid ${SHELF_COLOR[c.shelf] || 'var(--red)'}`,
@@ -196,6 +225,15 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
                       </div>
                     </div>
                   ))}
+                  {feedHasMore && (
+                    <button onClick={() => loadTab('feed', true)} disabled={loadingMore} style={{
+                      width: '100%', marginTop: '0.5rem',
+                      background: 'var(--mid)', border: '2px solid var(--border)', borderBottom: '3px solid var(--border)',
+                      borderRadius: '4px', padding: '0.75rem', cursor: loadingMore ? 'default' : 'pointer',
+                      fontFamily: "'Bangers', cursive", fontSize: '0.95rem', color: 'var(--yellow)', letterSpacing: '0.05em',
+                      textAlign: 'center', opacity: loadingMore ? 0.5 : 1,
+                    }}>{loadingMore ? 'Loading...' : 'Load More'}</button>
+                  )}
                 </div>
           )}
 
@@ -313,6 +351,15 @@ export default function FriendsFeed({ myAlias, isMobile, onNotifsRead }) {
                       {!n.read && <div style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />}
                     </div>
                   ))}
+                  {notifsHasMore && (
+                    <button onClick={() => loadTab('notifs', true)} disabled={loadingMore} style={{
+                      width: '100%', marginTop: '0.5rem',
+                      background: 'var(--mid)', border: '2px solid var(--border)', borderBottom: '3px solid var(--border)',
+                      borderRadius: '4px', padding: '0.75rem', cursor: loadingMore ? 'default' : 'pointer',
+                      fontFamily: "'Bangers', cursive", fontSize: '0.95rem', color: 'var(--yellow)', letterSpacing: '0.05em',
+                      textAlign: 'center', opacity: loadingMore ? 0.5 : 1,
+                    }}>{loadingMore ? 'Loading...' : 'Load More'}</button>
+                  )}
                 </div>
           )}
         </>
