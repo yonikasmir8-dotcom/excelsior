@@ -1,97 +1,121 @@
-process.env.DB_PATH = ':memory:';
-process.env.SEED_DEMO = 'false';
-process.env.ADMIN_USERS = 'boss';
-
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { app, db } = require('../server');
+const { app, db, ex, events, mm, assertConserved } = require('./helpers');
+const feed = require('../feed');
 
 let base, server;
 test.before(() => new Promise(r => { server = app.listen(0, () => { base = `http://localhost:${server.address().port}/api`; r(); }); }));
 test.after(() => server.close());
 
-async function call(method, path, body, token) {
-  const res = await fetch(base + path, {
-    method,
-    headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
-    body: body && JSON.stringify(body),
-  });
+async function call(method, path, body, auth) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (auth?.startsWith?.('gk_')) headers['X-API-Key'] = auth; else if (auth) headers.Authorization = `Bearer ${auth}`;
+  const res = await fetch(base + path, { method, headers, body: body && JSON.stringify(body) });
   return { status: res.status, body: await res.json() };
 }
 
-test('full market lifecycle: create → trade → settle', async () => {
+test('end to end: admin lists a match, house quotes it, users trade via session and API key, admin settles', async () => {
   const boss = (await call('POST', '/auth/register', { username: 'boss', password: 'password123' })).body;
   const fan = (await call('POST', '/auth/register', { username: 'fan', password: 'password123' })).body;
   assert.equal(boss.user.is_admin, true);
-  assert.equal(fan.user.is_admin, false);
-  assert.equal(fan.user.balance, 1000);
+  assert.equal(fan.user.balance, 1000_00);
 
-  const denied = await call('POST', '/admin/fixtures', { competition: 'X', home: 'A', away: 'B', kickoff: new Date(Date.now() + 864e5) }, fan.token);
-  assert.equal(denied.status, 403);
-
-  const fx = (await call('POST', '/admin/fixtures', {
-    competition: 'Premier League', home: 'Arsenal', away: 'Spurs',
-    kickoff: new Date(Date.now() + 864e5).toISOString(), probs: { home: 0.5, draw: 0.25, away: 0.25 },
+  assert.equal((await call('POST', '/admin/events/match', { competition: 'X', home: 'A', away: 'B', kickoff: new Date(Date.now() + 864e5) }, fan.token)).status, 403);
+  const ev = (await call('POST', '/admin/events/match', {
+    competition: 'Premier League', home: 'Arsenal', away: 'Spurs', kickoff: new Date(Date.now() + 864e5).toISOString(), xg_home: 1.9, xg_away: 1.0,
   }, boss.token)).body;
-  assert.equal(fx.state, 'open');
-  const result = fx.markets.find(m => m.type === '1X2');
-  const home = result.outcomes.find(o => o.code === 'HOME');
-  assert.ok(Math.abs(home.price - 0.5) < 1e-9);
+  assert.equal(ev.markets.length, 7);
+  const home = ev.markets.find(m => m.code === 'HOME');
+  assert.ok(home.buy_yes > home.price - 5 && home.buy_yes <= home.price + 5, 'house is quoting around fair');
 
-  const quote = (await call('POST', `/markets/${result.id}/quote`, { outcomeId: home.id, side: 'buy', amount: 100 }, fan.token)).body;
-  assert.ok(quote.shares > 100 && quote.price_after > 0.5);
-  assert.equal((await call('GET', '/me', null, fan.token)).body.balance, 1000, 'quote must not move money');
+  const book = (await call('GET', `/markets/${home.id}/book`)).body;
+  assert.equal(book.bids.length, 3);
+  assert.equal(book.asks.length, 3);
 
-  const buy = (await call('POST', `/markets/${result.id}/trade`, { outcomeId: home.id, side: 'buy', amount: 100 }, fan.token)).body;
-  assert.equal(buy.balance, 900);
-  assert.ok(Math.abs(buy.shares - quote.shares) < 1e-9);
+  const preview = (await call('POST', '/orders/preview', { market_id: home.id, outcome: 'YES', side: 'buy', type: 'market', amount: 5000 }, fan.token)).body;
+  assert.ok(preview.filled > 0);
+  assert.equal((await call('GET', '/me', null, fan.token)).body.balance, 1000_00, 'preview has no side effects');
 
-  const tooMuch = await call('POST', `/markets/${result.id}/trade`, { outcomeId: home.id, side: 'buy', amount: 5000 }, fan.token);
-  assert.equal(tooMuch.status, 400);
-  const oversell = await call('POST', `/markets/${result.id}/trade`, { outcomeId: home.id, side: 'sell', shares: buy.shares + 1 }, fan.token);
-  assert.equal(oversell.status, 400);
+  const buy = (await call('POST', '/orders', { market_id: home.id, outcome: 'YES', side: 'buy', type: 'market', amount: 5000 }, fan.token)).body;
+  assert.equal(buy.filled, preview.filled);
+  assert.equal(buy.balance, 1000_00 - buy.cost);
 
-  const sell = (await call('POST', `/markets/${result.id}/trade`, { outcomeId: home.id, side: 'sell', shares: buy.shares / 2 }, fan.token)).body;
-  assert.ok(sell.amount > 45 && sell.amount < 55);
+  // API key trading
+  const key = (await call('POST', '/keys', { label: 'bot' }, fan.token)).body.key;
+  assert.match(key, /^gk_/);
+  const limit = await call('POST', '/orders', { market_id: home.id, outcome: 'NO', side: 'buy', type: 'limit', price: 5, size: 10 }, key);
+  assert.equal(limit.status, 200);
+  assert.equal(limit.body.status, 'open');
+  const open = (await call('GET', '/orders', null, key)).body;
+  assert.equal(open.length, 1);
+  assert.equal((await call('DELETE', `/orders/${open[0].id}`, null, key)).status, 200);
+  assert.equal((await call('POST', '/keys', {}, key)).status, 403, 'keys cannot mint keys');
+
+  // House fair moved up after a big YES buy and requoted
+  mm.flush();
+  const after = (await call('GET', `/events/${ev.slug}`, null, fan.token)).body;
+  assert.ok(after.markets.find(m => m.code === 'HOME').price >= home.price);
+  assert.equal(after.my_positions.length, 1);
 
   const pf = (await call('GET', '/portfolio', null, fan.token)).body;
-  assert.equal(pf.open.length, 1);
-  assert.ok(Math.abs(pf.open[0].shares - buy.shares / 2) < 1e-9);
+  assert.equal(pf.positions.length, 1);
+  assert.equal(pf.history.length >= 1, true);
 
-  // Kick-off passes → trading closes
-  db.prepare('UPDATE fixtures SET kickoff = ? WHERE id = ?').run(new Date(Date.now() - 1000).toISOString(), fx.id);
-  const late = await call('POST', `/markets/${result.id}/trade`, { outcomeId: home.id, side: 'buy', amount: 10 }, fan.token);
-  assert.equal(late.status, 400);
+  // Comments show the commenter's stake
+  await call('POST', `/events/${ev.id}/comments`, { body: 'Arsenal cruise this' }, fan.token);
+  const comments = (await call('GET', `/events/${ev.id}/comments`)).body;
+  assert.equal(comments[0].holding.label, 'Arsenal');
 
-  const settle = (await call('POST', `/admin/fixtures/${fx.id}/settle`, { home_score: 2, away_score: 0 }, boss.token)).body;
-  assert.ok(Math.abs(settle.paid - buy.shares / 2) < 0.01);
+  // Close + settle
+  db.prepare('UPDATE events SET closes_at = ? WHERE id = ?').run(new Date(Date.now() - 1000).toISOString(), ev.id);
+  assert.equal((await call('POST', '/orders', { market_id: home.id, outcome: 'YES', side: 'buy', type: 'market', amount: 100 }, fan.token)).status, 400);
+  const settle = await call('POST', `/admin/events/${ev.id}/resolve`, { home_score: 3, away_score: 1 }, boss.token);
+  assert.equal(settle.status, 200);
   const me = (await call('GET', '/me', null, fan.token)).body;
-  assert.ok(Math.abs(me.balance - (900 + sell.amount + buy.shares / 2)) < 0.02);
+  assert.equal(me.balance, 1000_00 - buy.cost + buy.filled * 100);
+  const health = (await call('GET', '/admin/health', null, boss.token)).body;
+  assert.equal(health.ok, true);
+  assertConserved(assert);
 
-  const after = (await call('GET', `/fixtures/${fx.id}`)).body;
-  assert.equal(after.state, 'settled');
-  assert.deepEqual(after.markets.map(m => m.winning_outcome), ['HOME', 'UNDER', 'NO']);
-
-  const again = await call('POST', `/admin/fixtures/${fx.id}/settle`, { home_score: 0, away_score: 0 }, boss.token);
-  assert.equal(again.status, 400);
+  const lb = (await call('GET', '/leaderboard')).body;
+  assert.equal(lb[0].username, 'fan');
+  assert.ok(!lb.some(u => u.username === 'GameKnight'), 'house is not on the leaderboard');
 });
 
-test('void refunds remaining cost basis', async () => {
+test('outright: create, trade, resolve winner', async () => {
   const boss = (await call('POST', '/auth/login', { username: 'boss', password: 'password123' })).body;
-  const v = (await call('POST', '/auth/register', { username: 'voider', password: 'password123' })).body;
-  const fx = (await call('POST', '/admin/fixtures', { competition: 'Serie A', home: 'Inter', away: 'Milan', kickoff: new Date(Date.now() + 864e5) }, boss.token)).body;
-  const m = fx.markets[1];
-  await call('POST', `/markets/${m.id}/trade`, { outcomeId: m.outcomes[0].id, side: 'buy', amount: 250 }, v.token);
-  assert.equal((await call('GET', '/me', null, v.token)).body.balance, 750);
-  await call('POST', `/admin/fixtures/${fx.id}/void`, {}, boss.token);
-  assert.equal((await call('GET', '/me', null, v.token)).body.balance, 1000);
+  const ev = (await call('POST', '/admin/events/outright', {
+    competition: 'Premier League', title: 'Test title race', closes_at: new Date(Date.now() + 30 * 864e5).toISOString(),
+    contenders: [{ name: 'Arsenal', prob: 50 }, { name: 'Liverpool', prob: 30 }, { name: 'City', prob: 20 }],
+  }, boss.token)).body;
+  assert.equal(ev.kind, 'outright');
+  const liv = ev.markets.find(m => m.label === 'Liverpool');
+  const b = await call('POST', '/orders', { market_id: liv.id, outcome: 'YES', side: 'buy', type: 'market', amount: 1000 }, boss.token);
+  assert.equal(b.status, 200);
+  assert.equal((await call('POST', `/admin/events/${ev.id}/resolve`, { winner_market_id: liv.id }, boss.token)).status, 200);
+  const resolved = (await call('GET', `/events/${ev.id}`)).body;
+  assert.deepEqual(resolved.markets.map(m => m.outcome), ['NO', 'YES', 'NO']);
+  assertConserved(assert);
 });
 
-test('auth validation and daily bonus', async () => {
+test('auth validation, bonus, rate limit headers', async () => {
   assert.equal((await call('POST', '/auth/register', { username: 'a', password: 'password123' })).status, 400);
   assert.equal((await call('POST', '/auth/register', { username: 'FAN', password: 'password123' })).status, 409);
-  assert.equal((await call('POST', '/auth/login', { username: 'fan', password: 'nope-nope' })).status, 401);
+  assert.equal((await call('POST', '/auth/login', { username: 'fan', password: 'wrong-wrong' })).status, 401);
   const u = (await call('POST', '/auth/register', { username: 'bonus_hunter', password: 'password123' })).body;
-  assert.equal((await call('POST', '/me/bonus', {}, u.token)).body.balance, 1100);
+  assert.equal((await call('POST', '/me/bonus', {}, u.token)).body.balance, 1100_00);
   assert.equal((await call('POST', '/me/bonus', {}, u.token)).status, 400);
+});
+
+test('fixtures feed creates and resolves matches from football-data.org payloads', () => {
+  const ko = new Date(Date.now() + 2 * 864e5).toISOString();
+  const base = { id: 9001, utcDate: ko, competition: { name: 'Premier League' }, homeTeam: { shortName: 'Leeds' }, awayTeam: { shortName: 'Burnley' } };
+  assert.equal(feed.applyMatches([{ ...base, status: 'TIMED' }]).created, 1);
+  assert.equal(feed.applyMatches([{ ...base, status: 'TIMED' }]).created, 0, 'idempotent');
+  const ev = db.prepare("SELECT * FROM events WHERE external_id = 'fd:9001'").get();
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM markets WHERE event_id = ?').get(ev.id).n, 7);
+  const r = feed.applyMatches([{ ...base, status: 'FINISHED', score: { fullTime: { home: 3, away: 2 }, regularTime: { home: 2, away: 2 } } }]);
+  assert.equal(r.resolved, 1);
+  const draw = db.prepare("SELECT outcome FROM markets WHERE event_id = ? AND code = 'DRAW'").get(ev.id);
+  assert.equal(draw.outcome, 'YES', 'settles on the 90-minute score, not extra time');
 });

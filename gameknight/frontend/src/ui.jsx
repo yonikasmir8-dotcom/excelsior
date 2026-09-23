@@ -9,7 +9,9 @@ export function Button({ children, kind = 'primary', style, ...rest }) {
   const kinds = {
     primary: { background: C.accent, color: C.accentInk, border: `1px solid ${C.accent}` },
     ghost: { background: 'transparent', color: C.text, border: `1px solid ${C.line}` },
-    danger: { background: 'transparent', color: C.sell, border: `1px solid ${C.sell}66` },
+    danger: { background: 'transparent', color: C.no, border: `1px solid ${C.no}66` },
+    yes: { background: C.yes, color: '#06200f', border: `1px solid ${C.yes}` },
+    no: { background: C.no, color: '#2a0703', border: `1px solid ${C.no}` },
   }
   return (
     <button
@@ -50,14 +52,14 @@ export function Pill({ active, children, ...rest }) {
 
 export function StateBadge({ state }) {
   const map = {
-    open: { t: 'Open', c: C.good },
-    awaiting: { t: 'Awaiting result', c: '#eda100' },
-    settled: { t: 'Full time', c: C.text2 },
+    open: { t: 'Live', c: C.yes },
+    closed: { t: 'Awaiting result', c: '#eda100' },
+    resolved: { t: 'Resolved', c: C.text2 },
     void: { t: 'Void', c: C.muted },
   }
   const s = map[state] || map.open
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: C.text2 }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: C.text2, whiteSpace: 'nowrap' }}>
       <span style={{ width: 7, height: 7, borderRadius: 99, background: s.c }} />{s.t}
     </span>
   )
@@ -79,7 +81,7 @@ export function Empty({ children }) {
 
 export function ErrorBox({ children }) {
   if (!children) return null
-  return <div role="alert" style={{ background: '#ff7a6b1a', border: `1px solid ${C.sell}55`, color: '#ffb3aa', borderRadius: 8, padding: '10px 12px', fontSize: 14 }}>{children}</div>
+  return <div role="alert" style={{ background: '#ff7a6b1a', border: `1px solid ${C.no}55`, color: '#ffb3aa', borderRadius: 8, padding: '10px 12px', fontSize: 14 }}>{children}</div>
 }
 
 export function Crest({ name, size = 36 }) {
@@ -95,4 +97,34 @@ export function Crest({ name, size = 36 }) {
       ...display, fontWeight: 800, fontSize: size * 0.34, color: '#fff', paddingBottom: size * 0.18,
     }}>{initials}</div>
   )
+}
+
+export function Tabs({ tabs, value, onChange, size = 14 }) {
+  return (
+    <div role="tablist" style={{ display: 'flex', gap: 18, borderBottom: `1px solid ${C.line}`, overflowX: 'auto' }}>
+      {tabs.map(([k, label]) => (
+        <button key={k} role="tab" aria-selected={value === k} onClick={() => onChange(k)} style={{
+          background: 'none', border: 'none', padding: '10px 0', cursor: 'pointer', fontWeight: 700, fontSize: size, whiteSpace: 'nowrap',
+          color: value === k ? C.text : C.muted, borderBottom: `2px solid ${value === k ? C.accent : 'transparent'}`, marginBottom: -1,
+        }}>{label}</button>
+      ))}
+    </div>
+  )
+}
+
+export function Segmented({ options, value, onChange, style }) {
+  return (
+    <div style={{ display: 'flex', gap: 4, background: C.bg, borderRadius: 8, padding: 3, ...style }}>
+      {options.map(([k, label, activeStyle]) => (
+        <button key={k} type="button" onClick={() => onChange(k)} style={{
+          flex: 1, padding: '7px 8px', borderRadius: 6, border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap',
+          background: value === k ? C.surface3 : 'transparent', color: value === k ? C.text : C.muted, ...(value === k && activeStyle),
+        }}>{label}</button>
+      ))}
+    </div>
+  )
+}
+
+export function UserLink({ name, style }) {
+  return <a href={`#/u/${encodeURIComponent(name)}`} style={{ fontWeight: 600, ...style }} onClick={e => e.stopPropagation()}>{name}</a>
 }

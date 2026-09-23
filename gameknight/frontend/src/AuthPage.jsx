@@ -29,15 +29,16 @@ export default function AuthPage({ onAuth }) {
           Back your<br />football <span style={{ color: C.accent }}>brain.</span>
         </div>
         <p style={{ color: C.text2, fontSize: 17, lineHeight: 1.55, maxWidth: 460, marginTop: 20 }}>
-          GameKnight is a prediction market for football. Buy shares in match outcomes —
-          each winning share pays <strong style={{ color: C.text }}>1 KC</strong>. Prices move with the crowd,
-          so a share at 62% means the market thinks it's a 62% shot.
+          GameKnight is a prediction exchange for football. Buy YES or NO on results, goals and title races —
+          each winning share pays <strong style={{ color: C.text }}>1 KC</strong>. Prices are set by fans on a live order book,
+          so a share at 62¢ means the market thinks it's a 62% shot.
         </p>
         <ul style={{ color: C.text2, fontSize: 15, lineHeight: 1.9, paddingLeft: 18, margin: 0 }}>
           <li>Start with <strong style={{ color: C.text }}>1,000 Knight Coins</strong>, +100 every day</li>
-          <li>Match result, over/under 2.5 goals and both-teams-to-score markets</li>
-          <li>Sell any time before kick-off to lock in profit</li>
-          <li>Climb the table against other fans</li>
+          <li>7 markets on every fixture + season outrights (title, Champions League, Golden Boot)</li>
+          <li>Market and limit orders, sell any time before kick-off</li>
+          <li>Deep liquidity from day one — our market maker quotes every market</li>
+          <li>Public API for bots and market makers</li>
         </ul>
       </div>
 

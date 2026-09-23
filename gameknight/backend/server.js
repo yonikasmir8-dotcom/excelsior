@@ -1,529 +1,519 @@
-// GameKnight — football prediction market API
-// Play-money only: users trade shares in match outcomes with virtual Knight Coins (KC).
-// Prices come from an LMSR automated market maker (see lmsr.js), so every price is
-// the crowd's implied probability of that outcome.
+// GameKnight API — football prediction exchange.
+// Play-money: users trade YES/NO shares with Knight Coins (KC). 100¢ = 1 KC.
+//
+// Modules: db.js (schema) · exchange.js (order book + matching) · events.js (markets,
+// odds model, resolution) · marketmaker.js (house liquidity) · feed.js (fixtures/results)
 
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const express = require('express');
-const cors = require('cors');
-const Database = require('better-sqlite3');
-const lmsr = require('./lmsr');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const envPath = path.join(__dirname, '.env');
 if (fs.existsSync(envPath)) {
   for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
-    const m = line.match(/^\s*([A-Z_]+)\s*=\s*(.*)\s*$/);
+    const m = line.match(/^\s*([A-Z_]+)\s*=\s*(.*?)\s*$/);
     if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2];
   }
 }
+
+const express = require('express');
+const cors = require('cors');
+const db = require('./db');
+const ex = require('./exchange');
+const events = require('./events');
+const mm = require('./marketmaker');
+const feed = require('./feed');
+const { ApiError, now } = ex;
+
 const PORT = process.env.PORT || 4000;
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'gameknight.db');
 const ADMIN_USERS = (process.env.ADMIN_USERS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-const STARTING_BALANCE = 1000;
-const DAILY_BONUS = 100;
-const DEFAULT_LIQUIDITY = 250;
-const MIN_TRADE = 1;
+const STARTING_BALANCE = 1000_00;
+const DAILY_BONUS = 100_00;
 
-// ── Database ──────────────────────────────────────────────────────────────────
-const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL UNIQUE COLLATE NOCASE,
-    pass_hash TEXT NOT NULL,
-    balance REAL NOT NULL,
-    granted REAL NOT NULL,              -- total coins ever given (start + bonuses), for P&L
-    is_admin INTEGER NOT NULL DEFAULT 0,
-    is_bot INTEGER NOT NULL DEFAULT 0,
-    last_bonus_at TEXT,
-    created_at TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS sessions (
-    token TEXT PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS fixtures (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    competition TEXT NOT NULL,
-    home TEXT NOT NULL,
-    away TEXT NOT NULL,
-    kickoff TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'scheduled',   -- scheduled | settled | void
-    home_score INTEGER,
-    away_score INTEGER,
-    created_at TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS markets (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fixture_id INTEGER NOT NULL REFERENCES fixtures(id) ON DELETE CASCADE,
-    type TEXT NOT NULL,                         -- 1X2 | OU25 | BTTS
-    question TEXT NOT NULL,
-    b REAL NOT NULL,
-    status TEXT NOT NULL DEFAULT 'open',        -- open | settled | void
-    winning_outcome TEXT
-  );
-  CREATE TABLE IF NOT EXISTS outcomes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    market_id INTEGER NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
-    code TEXT NOT NULL,
-    label TEXT NOT NULL,
-    q REAL NOT NULL,
-    sort INTEGER NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS positions (
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    outcome_id INTEGER NOT NULL REFERENCES outcomes(id) ON DELETE CASCADE,
-    shares REAL NOT NULL DEFAULT 0,
-    cost REAL NOT NULL DEFAULT 0,               -- remaining cost basis
-    realized REAL NOT NULL DEFAULT 0,           -- realised P&L from sells + settlement
-    PRIMARY KEY (user_id, outcome_id)
-  );
-  CREATE TABLE IF NOT EXISTS trades (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    market_id INTEGER NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
-    outcome_id INTEGER NOT NULL REFERENCES outcomes(id) ON DELETE CASCADE,
-    side TEXT NOT NULL,                         -- buy | sell
-    shares REAL NOT NULL,
-    amount REAL NOT NULL,                       -- coins paid (buy) or received (sell)
-    created_at TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS price_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    market_id INTEGER NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
-    prices TEXT NOT NULL,                       -- JSON array, same order as outcomes.sort
-    created_at TEXT NOT NULL
-  );
-  CREATE INDEX IF NOT EXISTS idx_trades_market ON trades(market_id, created_at);
-  CREATE INDEX IF NOT EXISTS idx_history_market ON price_history(market_id, created_at);
-`);
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const now = () => new Date().toISOString();
-const round2 = n => Math.round(n * 100) / 100;
-const floor2 = n => Math.floor(n * 100 + 1e-9) / 100;
-const EPS = 1e-6;
-
-class ApiError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
-}
-
+// ── Auth helpers ──────────────────────────────────────────────────────────────
 function hashPassword(pw) {
   const salt = crypto.randomBytes(16).toString('hex');
   return `${salt}:${crypto.scryptSync(pw, salt, 64).toString('hex')}`;
 }
 function verifyPassword(pw, stored) {
   const [salt, hash] = stored.split(':');
-  const test = crypto.scryptSync(pw, salt, 64);
-  return crypto.timingSafeEqual(test, Buffer.from(hash, 'hex'));
+  return crypto.timingSafeEqual(crypto.scryptSync(pw, salt, 64), Buffer.from(hash, 'hex'));
+}
+const sha256 = s => crypto.createHash('sha256').update(s).digest('hex');
+
+function loadUser(req) {
+  const apiKey = req.headers['x-api-key'];
+  if (apiKey) {
+    const row = db.prepare('SELECT u.*, k.id AS key_id FROM api_keys k JOIN users u ON u.id = k.user_id WHERE k.key_hash = ?').get(sha256(apiKey));
+    if (row) db.prepare('UPDATE api_keys SET last_used_at = ? WHERE id = ?').run(now(), row.key_id);
+    return row;
+  }
+  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
+  return token ? db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?').get(token) : undefined;
 }
 
-// Market templates — how each market is labelled and how a final score resolves it.
-const MARKET_TYPES = {
-  '1X2': {
-    question: 'Match result',
-    outcomes: f => [['HOME', f.home], ['DRAW', 'Draw'], ['AWAY', f.away]],
-    resolve: (h, a) => (h > a ? 'HOME' : h === a ? 'DRAW' : 'AWAY'),
-  },
-  OU25: {
-    question: 'Total goals — over/under 2.5',
-    outcomes: () => [['OVER', 'Over 2.5'], ['UNDER', 'Under 2.5']],
-    resolve: (h, a) => (h + a > 2.5 ? 'OVER' : 'UNDER'),
-  },
-  BTTS: {
-    question: 'Both teams to score',
-    outcomes: () => [['YES', 'Yes'], ['NO', 'No']],
-    resolve: (h, a) => (h > 0 && a > 0 ? 'YES' : 'NO'),
-  },
-};
+const canClaimBonus = u => !u.last_bonus_at || Date.now() - new Date(u.last_bonus_at) >= 864e5;
 
-function fixtureState(f) {
-  if (f.status !== 'scheduled') return f.status;
-  return new Date(f.kickoff) > new Date() ? 'open' : 'awaiting';
+// ── Valuation ─────────────────────────────────────────────────────────────────
+function priceMap(marketIds) {
+  const out = {};
+  for (const id of marketIds) {
+    const m = db.prepare('SELECT * FROM markets WHERE id = ?').get(id);
+    out[id] = ex.displayPrice(m);
+  }
+  return out;
+}
+
+function openPositions(userId) {
+  const rows = db.prepare(`SELECT p.*, m.label, m.question, m.code, m.grp, m.status AS market_status, m.event_id,
+      e.title AS event_title, e.slug, e.kind, e.competition, e.closes_at, e.status AS event_status
+    FROM positions p JOIN markets m ON m.id = p.market_id JOIN events e ON e.id = m.event_id
+    WHERE p.user_id = ? AND (p.yes > 0 OR p.no > 0) ORDER BY e.closes_at`).all(userId);
+  const prices = priceMap([...new Set(rows.map(r => r.market_id))]);
+  const out = [];
+  for (const r of rows) {
+    const price = prices[r.market_id];
+    for (const [outcome, shares, cost] of [['YES', r.yes, r.yes_cost], ['NO', r.no, r.no_cost]]) {
+      if (!shares) continue;
+      const px = outcome === 'YES' ? price : 100 - price;
+      out.push({
+        market_id: r.market_id, event_id: r.event_id, slug: r.slug, event_title: r.event_title, competition: r.competition,
+        question: r.question, label: r.label, outcome, shares, avg_price: cost / shares, cost, price: px,
+        value: shares * px, pnl: shares * px - cost, closes_at: r.closes_at,
+        state: events.eventState({ status: r.event_status, closes_at: r.closes_at }),
+      });
+    }
+  }
+  return out;
+}
+
+function accountValue(user) {
+  const positions = openPositions(user.id);
+  const posValue = positions.reduce((s, p) => s + p.value, 0);
+  const escrow = db.prepare("SELECT COALESCE(SUM(price * (size - filled)), 0) AS v FROM orders WHERE user_id = ? AND status = 'open' AND side = 'buy'").get(user.id).v;
+  const total = user.balance + escrow + posValue;
+  return { cash: user.balance, in_orders: escrow, positions_value: posValue, portfolio: total, profit: total - user.granted, positions };
+}
+
+// Cash on the maker's side of a fill: same as the taker's when they traded the same
+// outcome (a transfer), the complement when they were on opposite outcomes (mint/merge)
+const MAKER_CASH = 'CASE WHEN t.taker_outcome = t.maker_outcome THEN t.notional ELSE t.size * 100 - t.notional END';
+
+function userVolume(userId, since) {
+  return db.prepare(`SELECT COALESCE(SUM(CASE WHEN taker_id = @u THEN notional ELSE 0 END)
+      + SUM(CASE WHEN maker_id = @u THEN ${MAKER_CASH.replace(/t\./g, '')} ELSE 0 END), 0) AS v
+    FROM trades WHERE (taker_id = @u OR maker_id = @u) AND created_at >= @since`).get({ u: userId, since: since || '' }).v;
 }
 
 function publicUser(u) {
+  const { positions, ...value } = accountValue(u);
   return {
-    id: u.id, username: u.username, balance: round2(u.balance),
-    is_admin: !!u.is_admin, can_claim_bonus: canClaimBonus(u),
-    next_bonus_at: u.last_bonus_at ? new Date(new Date(u.last_bonus_at).getTime() + 864e5).toISOString() : null,
+    id: u.id, username: u.username, is_admin: !!u.is_admin, balance: u.balance, ...value,
+    open_positions: positions.length, can_claim_bonus: canClaimBonus(u),
   };
 }
-function canClaimBonus(u) {
-  return !u.last_bonus_at || Date.now() - new Date(u.last_bonus_at).getTime() >= 864e5;
-}
 
-const stmt = {
-  userById: db.prepare('SELECT * FROM users WHERE id = ?'),
-  userByName: db.prepare('SELECT * FROM users WHERE username = ?'),
-  session: db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?'),
-  fixture: db.prepare('SELECT * FROM fixtures WHERE id = ?'),
-  market: db.prepare('SELECT * FROM markets WHERE id = ?'),
-  marketsForFixture: db.prepare('SELECT * FROM markets WHERE fixture_id = ? ORDER BY id'),
-  outcomes: db.prepare('SELECT * FROM outcomes WHERE market_id = ? ORDER BY sort'),
-  position: db.prepare('SELECT * FROM positions WHERE user_id = ? AND outcome_id = ?'),
-  upsertPosition: db.prepare(`INSERT INTO positions (user_id, outcome_id, shares, cost, realized) VALUES (@user_id, @outcome_id, @shares, @cost, @realized)
-    ON CONFLICT(user_id, outcome_id) DO UPDATE SET shares = @shares, cost = @cost, realized = @realized`),
-  setQ: db.prepare('UPDATE outcomes SET q = ? WHERE id = ?'),
-  setBalance: db.prepare('UPDATE users SET balance = ? WHERE id = ?'),
-  addHistory: db.prepare('INSERT INTO price_history (market_id, prices, created_at) VALUES (?, ?, ?)'),
-  addTrade: db.prepare('INSERT INTO trades (user_id, market_id, outcome_id, side, shares, amount, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'),
-};
+// ── Read models ──────────────────────────────────────────────────────────────
+const since24h = () => new Date(Date.now() - 864e5).toISOString();
 
-// ── Core market operations ───────────────────────────────────────────────────
-function createFixture({ competition, home, away, kickoff, probs = {}, liquidity = DEFAULT_LIQUIDITY }) {
-  const opening = {
-    '1X2': [probs.home ?? 0.4, probs.draw ?? 0.27, probs.away ?? 0.33],
-    OU25: [probs.over25 ?? 0.5, 1 - (probs.over25 ?? 0.5)],
-    BTTS: [probs.btts ?? 0.5, 1 - (probs.btts ?? 0.5)],
+function marketView(m) {
+  const qt = ex.quotes(m.id);
+  const vol = db.prepare('SELECT COALESCE(SUM(notional), 0) AS v FROM trades WHERE market_id = ?').get(m.id).v;
+  const prev = db.prepare('SELECT price FROM price_history WHERE market_id = ? AND created_at <= ? ORDER BY id DESC LIMIT 1').get(m.id, since24h());
+  const price = ex.displayPrice(m, qt);
+  return {
+    id: m.id, code: m.code, label: m.label, question: m.question, grp: m.grp, rules: m.rules,
+    status: m.status, outcome: m.outcome, price, change_24h: prev ? price - prev.price : 0,
+    last_price: m.last_price, volume: vol, ...qt,
   };
-  return db.transaction(() => {
-    const ts = now();
-    const { lastInsertRowid: fixtureId } = db.prepare(
-      'INSERT INTO fixtures (competition, home, away, kickoff, created_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(competition, home, away, new Date(kickoff).toISOString(), ts);
-    for (const [type, def] of Object.entries(MARKET_TYPES)) {
-      const { lastInsertRowid: marketId } = db.prepare(
-        'INSERT INTO markets (fixture_id, type, question, b) VALUES (?, ?, ?, ?)'
-      ).run(fixtureId, type, def.question, liquidity);
-      const qs = lmsr.initialQuantities(opening[type], liquidity);
-      def.outcomes({ home, away }).forEach(([code, label], i) => {
-        db.prepare('INSERT INTO outcomes (market_id, code, label, q, sort) VALUES (?, ?, ?, ?, ?)').run(marketId, code, label, qs[i], i);
-      });
-      stmt.addHistory.run(marketId, JSON.stringify(lmsr.prices(qs, liquidity)), ts);
-    }
-    return fixtureId;
-  })();
 }
 
-// Executes (or, with dryRun, just prices) a trade. Buys specify coins to spend,
-// sells specify shares to sell. Returns the fill and the post-trade prices.
-function trade({ userId, marketId, outcomeId, side, amount, shares, dryRun = false, ts = now() }) {
-  return db.transaction(() => {
-    const market = stmt.market.get(marketId);
-    if (!market) throw new ApiError(404, 'Market not found');
-    const fixture = stmt.fixture.get(market.fixture_id);
-    if (market.status !== 'open' || fixtureState(fixture) !== 'open') throw new ApiError(400, 'Trading is closed for this market');
-    const outs = stmt.outcomes.all(marketId);
-    const idx = outs.findIndex(o => o.id === Number(outcomeId));
-    if (idx < 0) throw new ApiError(400, 'Unknown outcome');
-    const user = stmt.userById.get(userId);
-    const qs = outs.map(o => o.q);
-    const pos = stmt.position.get(userId, outs[idx].id) || { user_id: userId, outcome_id: outs[idx].id, shares: 0, cost: 0, realized: 0 };
-
-    let fillShares, fillAmount;
-    if (side === 'buy') {
-      fillAmount = round2(Number(amount));
-      if (!(fillAmount >= MIN_TRADE)) throw new ApiError(400, `Minimum trade is ${MIN_TRADE} KC`);
-      if (fillAmount > user.balance + EPS) throw new ApiError(400, 'Insufficient balance');
-      fillShares = lmsr.sharesForAmount(qs, market.b, idx, fillAmount);
-    } else if (side === 'sell') {
-      fillShares = Number(shares);
-      if (!(fillShares > 0)) throw new ApiError(400, 'Enter a number of shares to sell');
-      if (fillShares > pos.shares + EPS) throw new ApiError(400, "You don't hold that many shares");
-      fillShares = Math.min(fillShares, pos.shares);
-      fillAmount = floor2(-lmsr.costToTrade(qs, market.b, idx, -fillShares));
-    } else {
-      throw new ApiError(400, 'side must be buy or sell');
-    }
-
-    const nextQs = qs.slice();
-    nextQs[idx] += side === 'buy' ? fillShares : -fillShares;
-    const before = lmsr.prices(qs, market.b);
-    const after = lmsr.prices(nextQs, market.b);
-    const result = {
-      side, outcome_id: outs[idx].id, outcome: outs[idx].label,
-      shares: fillShares, amount: fillAmount,
-      avg_price: fillAmount / fillShares,
-      price_before: before[idx], price_after: after[idx],
-      max_payout: side === 'buy' ? pos.shares + fillShares : pos.shares - fillShares,
-    };
-    if (dryRun) return result;
-
-    if (side === 'buy') {
-      pos.shares += fillShares;
-      pos.cost += fillAmount;
-      stmt.setBalance.run(round2(user.balance - fillAmount), userId);
-    } else {
-      const basisSold = pos.shares > 0 ? pos.cost * (fillShares / pos.shares) : 0;
-      pos.shares -= fillShares;
-      pos.cost -= basisSold;
-      pos.realized += fillAmount - basisSold;
-      if (pos.shares < EPS) { pos.shares = 0; pos.cost = 0; }
-      stmt.setBalance.run(round2(user.balance + fillAmount), userId);
-    }
-    stmt.upsertPosition.run(pos);
-    stmt.setQ.run(nextQs[idx], outs[idx].id);
-    stmt.addTrade.run(userId, marketId, outs[idx].id, side, fillShares, fillAmount, ts);
-    stmt.addHistory.run(marketId, JSON.stringify(after), ts);
-    result.balance = round2(stmt.userById.get(userId).balance);
-    return result;
-  })();
-}
-
-// Settle every market on a fixture from the final score. Winning shares pay 1 KC each.
-function settleFixture(fixtureId, homeScore, awayScore) {
-  return db.transaction(() => {
-    const f = stmt.fixture.get(fixtureId);
-    if (!f) throw new ApiError(404, 'Fixture not found');
-    if (f.status !== 'scheduled') throw new ApiError(400, `Fixture already ${f.status}`);
-    let paid = 0;
-    for (const m of stmt.marketsForFixture.all(fixtureId)) {
-      const winner = MARKET_TYPES[m.type].resolve(homeScore, awayScore);
-      for (const o of stmt.outcomes.all(m.id)) {
-        const holders = db.prepare('SELECT * FROM positions WHERE outcome_id = ? AND shares > 0').all(o.id);
-        for (const p of holders) {
-          const payout = o.code === winner ? round2(p.shares) : 0;
-          if (payout) {
-            db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').run(payout, p.user_id);
-            paid += payout;
-          }
-          stmt.upsertPosition.run({ ...p, realized: p.realized + payout - p.cost, shares: 0, cost: 0 });
-        }
-      }
-      db.prepare("UPDATE markets SET status = 'settled', winning_outcome = ? WHERE id = ?").run(winner, m.id);
-    }
-    db.prepare("UPDATE fixtures SET status = 'settled', home_score = ?, away_score = ? WHERE id = ?").run(homeScore, awayScore, fixtureId);
-    return { paid: round2(paid) };
-  })();
-}
-
-// Void a fixture (e.g. postponed): refund each holder's remaining cost basis.
-function voidFixture(fixtureId) {
-  return db.transaction(() => {
-    const f = stmt.fixture.get(fixtureId);
-    if (!f) throw new ApiError(404, 'Fixture not found');
-    if (f.status !== 'scheduled') throw new ApiError(400, `Fixture already ${f.status}`);
-    let refunded = 0;
-    for (const m of stmt.marketsForFixture.all(fixtureId)) {
-      for (const o of stmt.outcomes.all(m.id)) {
-        for (const p of db.prepare('SELECT * FROM positions WHERE outcome_id = ? AND shares > 0').all(o.id)) {
-          const refund = round2(p.cost);
-          db.prepare('UPDATE users SET balance = balance + ? WHERE id = ?').run(refund, p.user_id);
-          refunded += refund;
-          stmt.upsertPosition.run({ ...p, shares: 0, cost: 0 });
-        }
-      }
-      db.prepare("UPDATE markets SET status = 'void' WHERE id = ?").run(m.id);
-    }
-    db.prepare("UPDATE fixtures SET status = 'void' WHERE id = ?").run(fixtureId);
-    return { refunded: round2(refunded) };
-  })();
-}
-
-function marketView(m, { history = false } = {}) {
-  const outs = stmt.outcomes.all(m.id);
-  const ps = lmsr.prices(outs.map(o => o.q), m.b);
-  const vol = db.prepare('SELECT COALESCE(SUM(amount), 0) AS v FROM trades WHERE market_id = ?').get(m.id).v;
+function eventView(ev, { full = false } = {}) {
+  const markets = db.prepare('SELECT * FROM markets WHERE event_id = ? ORDER BY sort').all(ev.id).map(marketView);
+  const ids = markets.map(m => m.id);
+  const ph = ids.map(() => '?').join(',');
+  const vol24 = ids.length ? db.prepare(`SELECT COALESCE(SUM(notional), 0) AS v FROM trades WHERE market_id IN (${ph}) AND created_at >= ?`).get(...ids, since24h()).v : 0;
+  const liquidity = ids.length ? db.prepare(`SELECT COALESCE(SUM((size - filled) * price), 0) AS v FROM orders WHERE status = 'open' AND market_id IN (${ph})`).get(...ids).v : 0;
   const view = {
-    id: m.id, type: m.type, question: m.question, status: m.status, liquidity: m.b,
-    winning_outcome: m.winning_outcome, volume: round2(vol),
-    outcomes: outs.map((o, i) => ({ id: o.id, code: o.code, label: o.label, price: ps[i] })),
+    id: ev.id, slug: ev.slug, kind: ev.kind, competition: ev.competition, title: ev.title, home: ev.home, away: ev.away,
+    starts_at: ev.starts_at, closes_at: ev.closes_at, state: events.eventState(ev), home_score: ev.home_score, away_score: ev.away_score,
+    volume: markets.reduce((s, m) => s + m.volume, 0), volume_24h: vol24, liquidity,
+    comments: db.prepare('SELECT COUNT(*) AS n FROM comments WHERE event_id = ?').get(ev.id).n,
+    markets,
   };
-  if (history) {
-    view.history = db.prepare('SELECT prices, created_at FROM price_history WHERE market_id = ? ORDER BY id')
-      .all(m.id).map(h => ({ t: h.created_at, prices: JSON.parse(h.prices) }));
-  }
+  if (full) view.description = ev.description;
   return view;
 }
 
-function fixtureView(f, opts) {
-  const markets = stmt.marketsForFixture.all(f.id).map(m => marketView(m, opts));
-  return {
-    id: f.id, competition: f.competition, home: f.home, away: f.away, kickoff: f.kickoff,
-    state: fixtureState(f), home_score: f.home_score, away_score: f.away_score,
-    volume: round2(markets.reduce((s, m) => s + m.volume, 0)), markets,
-  };
+function findEvent(idOrSlug) {
+  const ev = /^\d+$/.test(idOrSlug)
+    ? db.prepare('SELECT * FROM events WHERE id = ?').get(idOrSlug)
+    : db.prepare('SELECT * FROM events WHERE slug = ?').get(idOrSlug);
+  if (!ev) throw new ApiError(404, 'Event not found');
+  return ev;
 }
 
-// Mark-to-market value of a user's open positions.
-function openPositions(userId) {
-  const rows = db.prepare(`
-    SELECT p.*, o.code, o.label, o.market_id, m.type, m.question, m.b, m.fixture_id,
-           f.home, f.away, f.kickoff, f.competition, f.status AS fixture_status
-    FROM positions p JOIN outcomes o ON o.id = p.outcome_id JOIN markets m ON m.id = o.market_id
-    JOIN fixtures f ON f.id = m.fixture_id
-    WHERE p.user_id = ? AND p.shares > 0 AND m.status = 'open' ORDER BY f.kickoff`).all(userId);
-  const priceCache = {};
-  return rows.map(r => {
-    if (!priceCache[r.market_id]) {
-      const outs = stmt.outcomes.all(r.market_id);
-      priceCache[r.market_id] = Object.fromEntries(lmsr.prices(outs.map(o => o.q), r.b).map((p, i) => [outs[i].id, p]));
-    }
-    const price = priceCache[r.market_id][r.outcome_id];
-    return {
-      outcome_id: r.outcome_id, market_id: r.market_id, fixture_id: r.fixture_id,
-      fixture: `${r.home} v ${r.away}`, competition: r.competition, kickoff: r.kickoff,
-      state: fixtureState({ status: r.fixture_status, kickoff: r.kickoff }),
-      question: r.question, outcome: r.label, shares: r.shares, cost: round2(r.cost),
-      price, value: round2(r.shares * price), unrealized: round2(r.shares * price - r.cost),
-    };
-  });
-}
-
-function netWorth(user) {
-  const value = openPositions(user.id).reduce((s, p) => s + p.value, 0);
-  return { balance: round2(user.balance), positions_value: round2(value), net_worth: round2(user.balance + value), profit: round2(user.balance + value - user.granted) };
-}
-
-// ── App & middleware ─────────────────────────────────────────────────────────
+// ── App ───────────────────────────────────────────────────────────────────────
 const app = express();
+app.set('trust proxy', 1);
 app.use(cors({ origin: process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',') : true }));
 app.use(express.json({ limit: '50kb' }));
 
-function loadUser(req) {
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
-  return token ? stmt.session.get(token) : undefined;
+// Token-bucket rate limiting per IP (or per user when authenticated)
+const buckets = new Map();
+function rateLimit(name, perMinute) {
+  return (req, res, next) => {
+    const id = `${name}:${req.user?.id || req.ip}`;
+    const t = Date.now();
+    const b = buckets.get(id) || { tokens: perMinute, at: t };
+    b.tokens = Math.min(perMinute, b.tokens + ((t - b.at) / 60e3) * perMinute);
+    b.at = t;
+    if (b.tokens < 1) return res.status(429).json({ error: 'Too many requests — slow down a moment' });
+    b.tokens -= 1;
+    buckets.set(id, b);
+    next();
+  };
 }
+setInterval(() => { const cut = Date.now() - 10 * 60e3; for (const [k, b] of buckets) if (b.at < cut) buckets.delete(k); }, 60e3).unref();
+
 const optionalAuth = (req, res, next) => { req.user = loadUser(req); next(); };
 const requireAuth = (req, res, next) => {
   req.user = loadUser(req);
   if (!req.user) return res.status(401).json({ error: 'Sign in required' });
+  if (req.user.is_bot) return res.status(403).json({ error: 'Bot accounts cannot use the API' });
   next();
 };
 const requireAdmin = (req, res, next) => requireAuth(req, res, () => {
   if (!req.user.is_admin) return res.status(403).json({ error: 'Admins only' });
   next();
 });
-const wrap = fn => (req, res, next) => { try { res.json(fn(req, res)); } catch (e) { next(e); } };
+const wrap = fn => async (req, res, next) => { try { res.json(await fn(req, res)); } catch (e) { next(e); } };
 
-// ── Auth ──────────────────────────────────────────────────────────────────────
+app.get('/api/health', (req, res) => res.json({ ok: true, time: now() }));
+
+// ── Auth & account ────────────────────────────────────────────────────────────
 function issueSession(userId) {
   const token = crypto.randomBytes(32).toString('hex');
   db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)').run(token, userId, now());
   return token;
 }
 
-app.post('/api/auth/register', wrap(req => {
+app.post('/api/auth/register', rateLimit('auth', 10), wrap(req => {
   const { username = '', password = '' } = req.body || {};
   if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) throw new ApiError(400, 'Username must be 3–20 letters, numbers or underscores');
-  if (password.length < 8) throw new ApiError(400, 'Password must be at least 8 characters');
-  if (stmt.userByName.get(username)) throw new ApiError(409, 'That username is taken');
+  if (typeof password !== 'string' || password.length < 8) throw new ApiError(400, 'Password must be at least 8 characters');
+  if (db.prepare('SELECT 1 FROM users WHERE username = ?').get(username)) throw new ApiError(409, 'That username is taken');
   const humans = db.prepare('SELECT COUNT(*) AS n FROM users WHERE is_bot = 0').get().n;
   const isAdmin = ADMIN_USERS.length ? ADMIN_USERS.includes(username.toLowerCase()) : humans === 0;
-  const { lastInsertRowid } = db.prepare(
-    'INSERT INTO users (username, pass_hash, balance, granted, is_admin, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(username, hashPassword(password), STARTING_BALANCE, STARTING_BALANCE, isAdmin ? 1 : 0, now());
-  return { token: issueSession(lastInsertRowid), user: publicUser(stmt.userById.get(lastInsertRowid)) };
+  const id = db.transaction(() => {
+    const { lastInsertRowid } = db.prepare('INSERT INTO users (username, pass_hash, granted, is_admin, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(username, hashPassword(password), STARTING_BALANCE, isAdmin ? 1 : 0, now());
+    ex.credit(lastInsertRowid, STARTING_BALANCE, 'signup', null);
+    return lastInsertRowid;
+  })();
+  return { token: issueSession(id), user: publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id)) };
 }));
 
-app.post('/api/auth/login', wrap(req => {
+app.post('/api/auth/login', rateLimit('auth', 10), wrap(req => {
   const { username = '', password = '' } = req.body || {};
-  const u = stmt.userByName.get(username);
-  if (!u || u.is_bot || !verifyPassword(password, u.pass_hash)) throw new ApiError(401, 'Wrong username or password');
+  const u = db.prepare('SELECT * FROM users WHERE username = ?').get(String(username));
+  if (!u || u.is_bot || !verifyPassword(String(password), u.pass_hash)) throw new ApiError(401, 'Wrong username or password');
   return { token: issueSession(u.id), user: publicUser(u) };
 }));
 
 app.post('/api/auth/logout', requireAuth, wrap(req => {
-  db.prepare('DELETE FROM sessions WHERE token = ?').run(req.headers.authorization.replace(/^Bearer\s+/i, ''));
+  db.prepare('DELETE FROM sessions WHERE token = ?').run((req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
   return { ok: true };
 }));
 
-app.get('/api/me', requireAuth, wrap(req => ({ ...publicUser(req.user), ...netWorth(req.user) })));
+app.get('/api/me', requireAuth, wrap(req => publicUser(req.user)));
 
 app.post('/api/me/bonus', requireAuth, wrap(req => {
-  if (!canClaimBonus(req.user)) throw new ApiError(400, 'Bonus already claimed — come back tomorrow');
-  db.prepare('UPDATE users SET balance = balance + ?, granted = granted + ?, last_bonus_at = ? WHERE id = ?')
-    .run(DAILY_BONUS, DAILY_BONUS, now(), req.user.id);
-  return publicUser(stmt.userById.get(req.user.id));
+  if (!canClaimBonus(req.user)) throw new ApiError(400, 'Daily bonus already claimed — come back tomorrow');
+  db.transaction(() => {
+    ex.credit(req.user.id, DAILY_BONUS, 'bonus', null);
+    db.prepare('UPDATE users SET granted = granted + ?, last_bonus_at = ? WHERE id = ?').run(DAILY_BONUS, now(), req.user.id);
+  })();
+  return publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id));
 }));
 
-// ── Fixtures & markets ───────────────────────────────────────────────────────
-app.get('/api/health', (req, res) => res.json({ ok: true }));
-
-app.get('/api/competitions', wrap(() =>
-  db.prepare('SELECT competition, COUNT(*) AS fixtures FROM fixtures GROUP BY competition ORDER BY competition').all()));
-
-app.get('/api/fixtures', wrap(req => {
-  const { state = 'open', competition } = req.query;
-  let rows = db.prepare('SELECT * FROM fixtures ORDER BY kickoff').all();
-  if (competition) rows = rows.filter(f => f.competition === competition);
-  if (state !== 'all') rows = rows.filter(f => fixtureState(f) === state);
-  if (state === 'settled' || state === 'void') rows.reverse();
-  return rows.slice(0, 100).map(f => fixtureView(f));
+app.put('/api/me/profile', requireAuth, wrap(req => {
+  const bio = String(req.body?.bio || '').slice(0, 280);
+  db.prepare('UPDATE users SET bio = ? WHERE id = ?').run(bio, req.user.id);
+  return { ok: true };
 }));
 
-app.get('/api/fixtures/:id', optionalAuth, wrap(req => {
-  const f = stmt.fixture.get(req.params.id);
-  if (!f) throw new ApiError(404, 'Fixture not found');
-  const view = fixtureView(f, { history: true });
-  view.recent_trades = db.prepare(`
-    SELECT t.side, t.shares, t.amount, t.created_at, u.username, o.label AS outcome, m.question
-    FROM trades t JOIN users u ON u.id = t.user_id JOIN outcomes o ON o.id = t.outcome_id JOIN markets m ON m.id = t.market_id
-    WHERE m.fixture_id = ? ORDER BY t.id DESC LIMIT 20`).all(f.id);
+// API keys for programmatic trading (market makers, bots, integrations)
+app.get('/api/keys', requireAuth, wrap(req =>
+  db.prepare('SELECT id, prefix, label, last_used_at, created_at FROM api_keys WHERE user_id = ? ORDER BY id DESC').all(req.user.id)));
+app.post('/api/keys', requireAuth, rateLimit('keys', 5), wrap(req => {
+  if (req.headers['x-api-key']) throw new ApiError(403, 'API keys cannot create API keys');
+  const count = db.prepare('SELECT COUNT(*) AS n FROM api_keys WHERE user_id = ?').get(req.user.id).n;
+  if (count >= 5) throw new ApiError(400, 'Maximum 5 API keys — revoke one first');
+  const key = `gk_${crypto.randomBytes(24).toString('base64url')}`;
+  const label = String(req.body?.label || 'API key').slice(0, 40);
+  db.prepare('INSERT INTO api_keys (user_id, key_hash, prefix, label, created_at) VALUES (?, ?, ?, ?, ?)').run(req.user.id, sha256(key), key.slice(0, 7), label, now());
+  return { key, label, note: 'Store this key now — it will not be shown again.' };
+}));
+app.delete('/api/keys/:id', requireAuth, wrap(req => {
+  const r = db.prepare('DELETE FROM api_keys WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
+  if (!r.changes) throw new ApiError(404, 'Key not found');
+  return { ok: true };
+}));
+
+// ── Discovery ────────────────────────────────────────────────────────────────
+app.get('/api/categories', wrap(() => db.prepare(`SELECT competition AS name, COUNT(*) AS events FROM events
+  WHERE status = 'open' AND closes_at > ? GROUP BY competition ORDER BY events DESC`).all(now())));
+
+app.get('/api/events', wrap(req => {
+  const { category, q: search, sort = 'trending', status = 'open', kind } = req.query;
+  let rows = db.prepare('SELECT * FROM events ORDER BY closes_at').all();
+  if (category) rows = rows.filter(e => e.competition === category);
+  if (kind) rows = rows.filter(e => e.kind === kind);
+  if (search) {
+    const s = String(search).toLowerCase();
+    rows = rows.filter(e => `${e.title} ${e.competition}`.toLowerCase().includes(s)
+      || db.prepare('SELECT 1 FROM markets WHERE event_id = ? AND lower(label) LIKE ?').get(e.id, `%${s}%`));
+  }
+  if (status !== 'all') {
+    const want = status === 'resolved' ? ['resolved', 'void'] : [status];
+    rows = rows.filter(e => want.includes(events.eventState(e)));
+  }
+  let views = rows.slice(0, 200).map(e => eventView(e));
+  const sorters = {
+    trending: (a, b) => b.volume_24h - a.volume_24h || b.volume - a.volume,
+    volume: (a, b) => b.volume - a.volume,
+    liquidity: (a, b) => b.liquidity - a.liquidity,
+    ending: (a, b) => new Date(a.closes_at) - new Date(b.closes_at),
+    new: (a, b) => b.id - a.id,
+  };
+  views.sort(sorters[sort] || sorters.trending);
+  if (status === 'resolved') views.sort((a, b) => new Date(b.closes_at) - new Date(a.closes_at));
+  return views.slice(0, 60);
+}));
+
+app.get('/api/events/:id', optionalAuth, wrap(req => {
+  const ev = findEvent(req.params.id);
+  const view = eventView(ev, { full: true });
   if (req.user) {
-    view.my_positions = db.prepare(`
-      SELECT p.outcome_id, p.shares, p.cost, p.realized FROM positions p JOIN outcomes o ON o.id = p.outcome_id
-      JOIN markets m ON m.id = o.market_id WHERE p.user_id = ? AND m.fixture_id = ?`).all(req.user.id, f.id);
+    const ids = view.markets.map(m => m.id);
+    view.my_positions = openPositions(req.user.id).filter(p => p.event_id === ev.id);
+    view.my_orders = db.prepare(`SELECT * FROM orders WHERE user_id = ? AND status = 'open' AND market_id IN (${ids.map(() => '?').join(',')}) ORDER BY id DESC`).all(req.user.id, ...ids);
   }
   return view;
 }));
 
-app.post('/api/markets/:id/quote', requireAuth, wrap(req =>
-  trade({ ...req.body, userId: req.user.id, marketId: Number(req.params.id), dryRun: true })));
-
-app.post('/api/markets/:id/trade', requireAuth, wrap(req =>
-  trade({ ...req.body, userId: req.user.id, marketId: Number(req.params.id) })));
-
-// ── Portfolio, leaderboard, activity ─────────────────────────────────────────
-app.get('/api/portfolio', requireAuth, wrap(req => {
-  const settled = db.prepare(`
-    SELECT o.label AS outcome, m.question, m.status, m.winning_outcome, o.code, f.id AS fixture_id,
-           f.home, f.away, f.home_score, f.away_score, f.kickoff, p.realized
-    FROM positions p JOIN outcomes o ON o.id = p.outcome_id JOIN markets m ON m.id = o.market_id
-    JOIN fixtures f ON f.id = m.fixture_id
-    WHERE p.user_id = ? AND m.status != 'open' ORDER BY f.kickoff DESC LIMIT 100`).all(req.user.id)
-    .map(r => ({ ...r, realized: round2(r.realized), won: r.status === 'settled' && r.code === r.winning_outcome }));
-  return { ...publicUser(req.user), ...netWorth(req.user), open: openPositions(req.user.id), settled };
+const RANGES = { '1d': 864e5, '1w': 7 * 864e5, '1m': 30 * 864e5 };
+app.get('/api/events/:id/history', wrap(req => {
+  const ev = findEvent(req.params.id);
+  const span = RANGES[req.query.range];
+  const from = span ? new Date(Date.now() - span).toISOString() : '';
+  const out = {};
+  for (const m of db.prepare('SELECT id FROM markets WHERE event_id = ?').all(ev.id)) {
+    // Carry the last price before the window in, so every line starts at the left edge
+    const before = from ? db.prepare('SELECT price FROM price_history WHERE market_id = ? AND created_at < ? ORDER BY id DESC LIMIT 1').get(m.id, from) : null;
+    const pts = db.prepare('SELECT price AS p, created_at AS t FROM price_history WHERE market_id = ? AND created_at >= ? ORDER BY id').all(m.id, from);
+    if (before) pts.unshift({ p: before.price, t: from });
+    out[m.id] = pts;
+  }
+  return out;
 }));
 
-app.get('/api/leaderboard', wrap(() => {
-  const users = db.prepare('SELECT * FROM users').all();
-  const trades = Object.fromEntries(db.prepare('SELECT user_id, COUNT(*) AS n FROM trades GROUP BY user_id').all().map(r => [r.user_id, r.n]));
-  return users.map(u => ({ username: u.username, is_bot: !!u.is_bot, trades: trades[u.id] || 0, ...netWorth(u) }))
-    .filter(u => u.trades > 0)
-    .sort((a, b) => b.profit - a.profit)
-    .slice(0, 50)
+app.get('/api/events/:id/activity', wrap(req => {
+  const ev = findEvent(req.params.id);
+  return db.prepare(`SELECT t.id, t.price, t.size, t.notional, t.taker_outcome AS outcome, t.taker_side AS side, t.created_at,
+      u.username, m.label, m.id AS market_id
+    FROM trades t JOIN markets m ON m.id = t.market_id JOIN users u ON u.id = t.taker_id
+    WHERE m.event_id = ? ORDER BY t.id DESC LIMIT 50`).all(ev.id);
+}));
+
+app.get('/api/markets/:id/book', wrap(req => {
+  const m = db.prepare('SELECT * FROM markets WHERE id = ?').get(req.params.id);
+  if (!m) throw new ApiError(404, 'Market not found');
+  return { ...ex.orderBook(m.id), ...ex.quotes(m.id), last_price: m.last_price };
+}));
+
+app.get('/api/markets/:id/holders', wrap(req => {
+  const top = col => db.prepare(`SELECT u.username, p.${col} AS shares FROM positions p JOIN users u ON u.id = p.user_id
+    WHERE p.market_id = ? AND p.${col} > 0 AND u.is_house = 0 ORDER BY p.${col} DESC LIMIT 10`).all(req.params.id);
+  return { yes: top('yes'), no: top('no') };
+}));
+
+// ── Comments ─────────────────────────────────────────────────────────────────
+app.get('/api/events/:id/comments', wrap(req => {
+  const ev = findEvent(req.params.id);
+  const marketIds = db.prepare('SELECT id FROM markets WHERE event_id = ?').all(ev.id).map(r => r.id);
+  return db.prepare(`SELECT c.id, c.body, c.created_at, u.username FROM comments c JOIN users u ON u.id = c.user_id
+    WHERE c.event_id = ? ORDER BY c.id DESC LIMIT 100`).all(ev.id).map(c => {
+    // Show each commenter's current stake, like Polymarket's holder badges
+    const u = db.prepare('SELECT id FROM users WHERE username = ?').get(c.username);
+    const pos = db.prepare(`SELECT m.label, p.yes, p.no FROM positions p JOIN markets m ON m.id = p.market_id
+      WHERE p.user_id = ? AND p.market_id IN (${marketIds.map(() => '?').join(',')}) AND (p.yes > 0 OR p.no > 0)
+      ORDER BY (p.yes + p.no) DESC LIMIT 1`).get(u.id, ...marketIds);
+    return { ...c, holding: pos ? { label: pos.label, outcome: pos.yes >= pos.no ? 'YES' : 'NO', shares: Math.max(pos.yes, pos.no) } : null };
+  });
+}));
+
+app.post('/api/events/:id/comments', requireAuth, rateLimit('comment', 6), wrap(req => {
+  const ev = findEvent(req.params.id);
+  const body = String(req.body?.body || '').trim();
+  if (!body || body.length > 1000) throw new ApiError(400, 'Comments must be 1–1000 characters');
+  const { lastInsertRowid } = db.prepare('INSERT INTO comments (event_id, user_id, body, created_at) VALUES (?, ?, ?, ?)').run(ev.id, req.user.id, body, now());
+  ex.bus.emit('comment', { event_id: ev.id });
+  return { id: lastInsertRowid, body, created_at: now(), username: req.user.username };
+}));
+
+// ── Trading ──────────────────────────────────────────────────────────────────
+function orderInput(req, dryRun) {
+  const b = req.body || {};
+  return {
+    userId: req.user.id, marketId: Number(b.market_id), outcome: b.outcome, side: b.side, type: b.type,
+    price: b.price == null ? undefined : Number(b.price), size: b.size == null ? undefined : Number(b.size),
+    amount: b.amount == null ? undefined : Number(b.amount), postOnly: !!b.post_only, dryRun,
+  };
+}
+
+app.post('/api/orders/preview', requireAuth, rateLimit('preview', 240), wrap(req => ex.placeOrder(orderInput(req, true))));
+app.post('/api/orders', requireAuth, rateLimit('order', 120), wrap(req => ex.placeOrder(orderInput(req, false))));
+
+app.get('/api/orders', requireAuth, wrap(req => db.prepare(`SELECT o.*, m.label, m.question, e.title AS event_title, e.slug
+  FROM orders o JOIN markets m ON m.id = o.market_id JOIN events e ON e.id = m.event_id
+  WHERE o.user_id = ? AND o.status = ? ORDER BY o.id DESC LIMIT 200`).all(req.user.id, req.query.status === 'all' ? 'filled' : 'open')));
+
+app.delete('/api/orders/:id', requireAuth, wrap(req => { ex.cancelOrder(req.user.id, Number(req.params.id)); return { ok: true }; }));
+app.delete('/api/orders', requireAuth, wrap(req => {
+  const marketId = req.query.market_id;
+  const n = marketId
+    ? ex.cancelAll('user_id = ? AND market_id = ?', [req.user.id, Number(marketId)])
+    : ex.cancelAll('user_id = ?', [req.user.id]);
+  return { cancelled: n };
+}));
+
+// ── Portfolio, profiles, leaderboard ────────────────────────────────────────
+app.get('/api/portfolio', requireAuth, wrap(req => {
+  const value = accountValue(req.user);
+  const history = db.prepare(`SELECT t.id, t.price, t.size, t.notional, t.created_at, m.label, m.question, e.title AS event_title, e.slug,
+      CASE WHEN t.taker_id = @u THEN t.taker_outcome ELSE t.maker_outcome END AS outcome,
+      CASE WHEN t.taker_id = @u THEN t.taker_side ELSE t.maker_side END AS side,
+      CASE WHEN t.taker_id = @u THEN t.notional ELSE ${MAKER_CASH} END AS cash
+    FROM trades t JOIN markets m ON m.id = t.market_id JOIN events e ON e.id = m.event_id
+    WHERE t.taker_id = @u OR t.maker_id = @u ORDER BY t.id DESC LIMIT 100`).all({ u: req.user.id });
+  const settled = db.prepare(`SELECT p.realized, m.label, m.question, m.outcome, m.status, e.title AS event_title, e.slug, e.resolved_at
+    FROM positions p JOIN markets m ON m.id = p.market_id JOIN events e ON e.id = m.event_id
+    WHERE p.user_id = ? AND m.status != 'open' AND p.realized != 0 ORDER BY e.resolved_at DESC LIMIT 100`).all(req.user.id);
+  return { ...publicUser(req.user), ...value, history, settled, volume: userVolume(req.user.id) };
+}));
+
+app.get('/api/users/:username', wrap(req => {
+  const u = db.prepare('SELECT * FROM users WHERE username = ?').get(req.params.username);
+  if (!u) throw new ApiError(404, 'User not found');
+  const value = accountValue(u);
+  const trades = db.prepare(`SELECT t.price, t.size, t.notional, t.taker_outcome AS outcome, t.taker_side AS side, t.created_at, m.label, e.title AS event_title, e.slug
+    FROM trades t JOIN markets m ON m.id = t.market_id JOIN events e ON e.id = m.event_id WHERE t.taker_id = ? ORDER BY t.id DESC LIMIT 30`).all(u.id);
+  return {
+    username: u.username, bio: u.bio, joined: u.created_at, is_bot: !!u.is_bot, is_house: !!u.is_house,
+    portfolio: value.portfolio, profit: u.is_house ? null : value.profit, positions: value.positions,
+    volume: userVolume(u.id), trades: db.prepare('SELECT COUNT(*) AS n FROM trades WHERE taker_id = ? OR maker_id = ?').get(u.id, u.id).n,
+    markets_traded: db.prepare('SELECT COUNT(*) AS n FROM positions WHERE user_id = ?').get(u.id).n,
+    recent: trades,
+  };
+}));
+
+app.get('/api/leaderboard', wrap(req => {
+  const by = req.query.by === 'volume' ? 'volume' : 'profit';
+  const since = req.query.period === 'week' ? new Date(Date.now() - 7 * 864e5).toISOString() : '';
+  const users = db.prepare('SELECT * FROM users WHERE is_house = 0').all();
+  return users.map(u => {
+    const { profit, portfolio } = accountValue(u);
+    return { username: u.username, is_bot: !!u.is_bot, profit, portfolio, volume: userVolume(u.id, since) };
+  }).filter(u => u.volume > 0)
+    .sort((a, b) => b[by] - a[by])
+    .slice(0, 100)
     .map((u, i) => ({ rank: i + 1, ...u }));
 }));
 
-app.get('/api/activity', wrap(() => db.prepare(`
-  SELECT t.side, t.shares, t.amount, t.created_at, u.username, o.label AS outcome, m.question,
-         f.id AS fixture_id, f.home, f.away
-  FROM trades t JOIN users u ON u.id = t.user_id JOIN outcomes o ON o.id = t.outcome_id
-  JOIN markets m ON m.id = t.market_id JOIN fixtures f ON f.id = m.fixture_id
-  ORDER BY t.id DESC LIMIT 30`).all()));
+app.get('/api/activity', wrap(() => db.prepare(`SELECT t.id, t.price, t.size, t.notional, t.taker_outcome AS outcome, t.taker_side AS side, t.created_at,
+    u.username, m.label, e.title AS event_title, e.slug
+  FROM trades t JOIN users u ON u.id = t.taker_id JOIN markets m ON m.id = t.market_id JOIN events e ON e.id = m.event_id
+  ORDER BY t.id DESC LIMIT 40`).all()));
 
-// ── Admin ─────────────────────────────────────────────────────────────────────
-app.post('/api/admin/fixtures', requireAdmin, wrap(req => {
-  const { competition, home, away, kickoff, probs, liquidity } = req.body || {};
+app.get('/api/stats', wrap(() => ({
+  volume_24h: db.prepare('SELECT COALESCE(SUM(notional), 0) AS v FROM trades WHERE created_at >= ?').get(since24h()).v,
+  volume: db.prepare('SELECT COALESCE(SUM(notional), 0) AS v FROM trades').get().v,
+  open_markets: db.prepare("SELECT COUNT(*) AS n FROM markets m JOIN events e ON e.id = m.event_id WHERE m.status = 'open' AND e.closes_at > ?").get(now()).n,
+  traders: db.prepare('SELECT COUNT(*) AS n FROM users WHERE is_bot = 0').get().n,
+})));
+
+// ── Live stream (Server-Sent Events) ────────────────────────────────────────
+const clients = new Set();
+app.get('/api/stream', (req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.write('retry: 3000\n\n');
+  clients.add(res);
+  req.on('close', () => clients.delete(res));
+});
+function broadcast(type, payload) {
+  const msg = `data: ${JSON.stringify({ type, ...payload })}\n\n`;
+  for (const c of clients) c.write(msg);
+}
+for (const type of ['trade', 'book', 'event', 'comment']) ex.bus.on(type, p => broadcast(type, p));
+setInterval(() => { for (const c of clients) c.write(': ping\n\n'); }, 25e3).unref();
+
+// ── Admin ────────────────────────────────────────────────────────────────────
+app.post('/api/admin/events/match', requireAdmin, wrap(req => {
+  const { competition, home, away, kickoff, xg_home, xg_away } = req.body || {};
   if (![competition, home, away].every(s => typeof s === 'string' && s.trim())) throw new ApiError(400, 'competition, home and away are required');
-  if (isNaN(new Date(kickoff))) throw new ApiError(400, 'kickoff must be a valid date');
-  const b = Number(liquidity) || DEFAULT_LIQUIDITY;
-  if (b < 10 || b > 100000) throw new ApiError(400, 'liquidity must be between 10 and 100000');
-  const p = probs || {};
-  for (const k of ['home', 'draw', 'away', 'over25', 'btts']) {
-    if (p[k] !== undefined && !(p[k] > 0 && p[k] < 1)) throw new ApiError(400, `probs.${k} must be between 0 and 1`);
+  if (new Date(kickoff) <= new Date()) throw new ApiError(400, 'Kick-off must be in the future');
+  const id = events.createMatchEvent({ competition: competition.trim(), home: home.trim(), away: away.trim(), kickoff, xgHome: Number(xg_home) || 1.45, xgAway: Number(xg_away) || 1.15 });
+  db.prepare('SELECT id FROM markets WHERE event_id = ?').all(id).forEach(m => mm.requote(m.id));
+  return eventView(db.prepare('SELECT * FROM events WHERE id = ?').get(id));
+}));
+
+app.post('/api/admin/events/outright', requireAdmin, wrap(req => {
+  const { competition, title, question, closes_at, contenders, description } = req.body || {};
+  if (![competition, title].every(s => typeof s === 'string' && s.trim())) throw new ApiError(400, 'competition and title are required');
+  const id = events.createOutrightEvent({ competition, title, question, closesAt: closes_at, contenders, description });
+  db.prepare('SELECT id FROM markets WHERE event_id = ?').all(id).forEach(m => mm.requote(m.id));
+  return eventView(db.prepare('SELECT * FROM events WHERE id = ?').get(id));
+}));
+
+app.post('/api/admin/events/:id/resolve', requireAdmin, wrap(req => {
+  const ev = findEvent(req.params.id);
+  if (ev.kind === 'match') {
+    const h = Number(req.body?.home_score), a = Number(req.body?.away_score);
+    if (![h, a].every(n => Number.isInteger(n) && n >= 0 && n < 50)) throw new ApiError(400, 'Scores must be whole numbers ≥ 0');
+    return events.resolveMatch(ev.id, h, a);
   }
-  const id = createFixture({ competition: competition.trim(), home: home.trim(), away: away.trim(), kickoff, probs: p, liquidity: b });
-  return fixtureView(stmt.fixture.get(id));
+  return events.resolveOutright(ev.id, Number(req.body?.winner_market_id));
 }));
 
-app.post('/api/admin/fixtures/:id/settle', requireAdmin, wrap(req => {
-  const h = Number(req.body?.home_score), a = Number(req.body?.away_score);
-  if (![h, a].every(n => Number.isInteger(n) && n >= 0)) throw new ApiError(400, 'Scores must be whole numbers ≥ 0');
-  return settleFixture(Number(req.params.id), h, a);
+app.post('/api/admin/markets/:id/resolve', requireAdmin, wrap(req => {
+  const outcome = String(req.body?.outcome || '').toUpperCase();
+  if (!['YES', 'NO', 'VOID'].includes(outcome)) throw new ApiError(400, 'outcome must be YES, NO or VOID');
+  return events.resolveSingleMarket(Number(req.params.id), outcome);
 }));
 
-app.post('/api/admin/fixtures/:id/void', requireAdmin, wrap(req => voidFixture(Number(req.params.id))));
+app.post('/api/admin/events/:id/void', requireAdmin, wrap(req => events.voidEvent(findEvent(req.params.id).id)));
 
-// ── Errors, static frontend, start ───────────────────────────────────────────
+app.post('/api/admin/feed/sync', requireAdmin, wrap(async () => {
+  const r = await feed.sync();
+  if (!r) throw new ApiError(400, 'Set FOOTBALL_DATA_TOKEN to enable the fixtures feed');
+  mm.requoteAll();
+  return r;
+}));
+
+// Reconciliation: every balance must equal the sum of its ledger entries, and every
+// market must have equal YES and NO shares outstanding (they're only created in pairs).
+app.get('/api/admin/health', requireAdmin, wrap(() => {
+  const ledgerMismatch = db.prepare(`SELECT u.username, u.balance, COALESCE(SUM(l.delta), 0) AS ledger FROM users u
+    LEFT JOIN ledger l ON l.user_id = u.id GROUP BY u.id HAVING u.balance != ledger`).all();
+  const unbalanced = db.prepare('SELECT market_id, SUM(yes) AS yes, SUM(no) AS no FROM positions GROUP BY market_id HAVING SUM(yes) != SUM(no)').all();
+  const house = db.prepare('SELECT * FROM users WHERE is_house = 1').get();
+  return { ok: !ledgerMismatch.length && !unbalanced.length, ledger_mismatch: ledgerMismatch, unbalanced_markets: unbalanced, house: house && accountValue(house) };
+}));
+
+// ── Errors, static frontend, boot ────────────────────────────────────────────
 app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 app.use((err, req, res, next) => {
   if (err instanceof ApiError) return res.status(err.status).json({ error: err.message });
@@ -532,16 +522,18 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Something went wrong' });
 });
 
-// In production, serve the built frontend from the same origin.
 const dist = path.join(__dirname, '..', 'frontend', 'dist');
 if (fs.existsSync(dist)) app.use(express.static(dist));
 
-if (process.env.SEED_DEMO !== 'false' && db.prepare('SELECT COUNT(*) AS n FROM fixtures').get().n === 0) {
-  require('./seed')({ db, createFixture, trade, settleFixture, hashPassword, STARTING_BALANCE });
+if (process.env.SEED_DEMO !== 'false' && !process.env.FOOTBALL_DATA_TOKEN && db.prepare('SELECT COUNT(*) AS n FROM events').get().n === 0) {
+  require('./seed')({ hashPassword });
 }
+mm.start(hashPassword);
+feed.start();
+setInterval(() => { if (events.closeExpired()) mm.requoteAll(); }, 30e3).unref();
 
 if (require.main === module) {
-  app.listen(PORT, () => console.log(`♞ GameKnight API on http://localhost:${PORT}`));
+  app.listen(PORT, () => console.log(`♞ GameKnight exchange on http://localhost:${PORT}`));
 }
 
-module.exports = { app, db, createFixture, trade, settleFixture, voidFixture };
+module.exports = { app, db, hashPassword };

@@ -4,7 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0b110e" />
-    <title>GameKnight — Football Prediction Market</title>
+    <title>GameKnight — Football Prediction Exchange</title>
+    <meta name="description" content="Trade YES/NO shares on football results, goals and title races. Prices are probabilities set by fans." />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♞</text></svg>" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -17,6 +18,7 @@
       input:focus, select:focus, button:focus-visible { outline: 2px solid #c6f432; outline-offset: 1px; }
       input[type=number]::-webkit-inner-spin-button { opacity: .4; }
       ::selection { background: #c6f43255; }
+      @keyframes gk-up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
       @keyframes gk-fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
     </style>
   </head>
