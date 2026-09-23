@@ -6,6 +6,7 @@ import DetailModal from './DetailModal.jsx'
 import FriendsFeed from './FriendsFeed.jsx'
 import DiscoverTab from './DiscoverTab.jsx'
 import ReaderStats from './ReaderStats.jsx'
+import GameTab from './GameTab.jsx'
 
 const halftone = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Ccircle cx='3' cy='3' r='0.9' fill='rgba(255,255,255,0.03)'/%3E%3C/svg%3E")`
 const SHELF_COLOR = { read: 'var(--red)', reading: 'var(--blue)', want: 'var(--muted)' }
@@ -63,6 +64,7 @@ function BottomNav({ view, setView, onAdd, notifCount }) {
     { v: 'shelf',    icon: '📚', label: 'Collection' },
     { v: 'discover', icon: '🔍', label: 'Discover' },
     { v: 'friends',  icon: '👥', label: 'Friends' },
+    { v: 'play',     icon: '🎮', label: 'Play' },
   ]
   return (
     <nav style={{
@@ -180,7 +182,7 @@ export default function MainApp({ alias }) {
   }, [gt, comics.length, stats])
 
   useEffect(() => {
-    if (view === 'friends' || view === 'discover') return // These tabs manage their own data
+    if (view === 'friends' || view === 'discover' || view === 'play') return // These tabs manage their own data
     load(view === 'shelf' ? shelfFilter : null)
   }, [view, shelfFilter])
 
@@ -258,7 +260,7 @@ export default function MainApp({ alias }) {
         {/* Desktop nav — hidden on mobile (replaced by bottom bar) */}
         {!isMobile && (
           <nav style={{ display: 'flex' }}>
-            {[['diary', 'Diary'], ['shelf', 'Collection'], ['discover', 'Discover'], ['friends', 'Friends'], ['stats', 'Stats']].map(([v, label]) => (
+            {[['diary', 'Diary'], ['shelf', 'Collection'], ['discover', 'Discover'], ['friends', 'Friends'], ['stats', 'Stats'], ['play', 'Play']].map(([v, label]) => (
               <button key={v} onClick={() => setView(v)} style={{
                 background: view === v ? 'rgba(0,0,0,0.25)' : 'none',
                 border: 'none', borderLeft: '2px solid rgba(0,0,0,0.2)',
@@ -680,6 +682,11 @@ export default function MainApp({ alias }) {
         {/* ── DISCOVER ── */}
         {view === 'discover' && (
           <DiscoverTab isMobile={isMobile} />
+        )}
+
+        {/* ── PLAY ── */}
+        {view === 'play' && (
+          <GameTab isMobile={isMobile} />
         )}
 
         {/* ── FRIENDS ── */}
