@@ -41,6 +41,16 @@ The UI follows the Game Knight pitch deck:
 
 Prices are shown in Knight Coins (₭). One winning unit pays ₭1.00, and the API still works in integer hundredths.
 
+## Club crests
+
+Crests come from [football-logos.cc](https://football-logos.cc) via the MIT-licensed `football-logos` package.
+
+- **Mapping:** `frontend/scripts/gen-crests.mjs` maps every club in the top five leagues, the Championship and UEFA competitions to its crest URL, writing `src/crests.json` (18 KB).
+- **Where they load:** the hosted app loads crests in the fan's browser. The phone build embeds 96px copies whenever the build machine can reach the crest host.
+- **Fallback:** anything missing falls back to a club-colour shield with the club's three-letter code.
+
+**Licensing:** club crests and league marks are trademarks. Using them in a commercial product (especially one with prices on outcomes) needs rights from the clubs or leagues, or a data provider licence that includes them. Clear this before a public launch.
+
 ## Run it on a phone (no server)
 
 ```bash

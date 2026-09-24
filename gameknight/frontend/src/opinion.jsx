@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { api, getToken } from './api.js'
 import { C, display, fmt, num, share, useIsMobile } from './theme.js'
-import { Icon, Input, PriceBox, Sheet, Strip, Tile, notify } from './ui.jsx'
+import { Crest, Icon, Input, PriceBox, Sheet, Strip, Tile, notify } from './ui.jsx'
 
 // ── Follows store ("Tailored Experience") ────────────────────────────────────
 let follows = []
@@ -179,18 +179,19 @@ export function OpinionCard({ ev, grp, maxRows = 3, strip, rowTone, selected, on
 
 // Right-hand art column: home tile · score/kick-off · away tile, or a tall competition tile
 export function CardArt({ ev, w }) {
+  const box = { background: '#101010', border: `1px solid ${C.line}`, display: 'grid', placeItems: 'center' }
   if (ev.kind !== 'match') {
-    return <Tile name={ev.competition} w={w} h="100%" big style={{ minHeight: 120 }} />
+    return <div style={{ ...box, width: w, minHeight: 120 }}><Crest name={ev.competition} size={Math.round(w * 0.7)} /></div>
   }
   const mid = ev.state === 'resolved' ? `${ev.home_score}–${ev.away_score}` : ev.state === 'closed' ? 'LIVE' : fmt.time(ev.starts_at)
   return (
-    <div style={{ display: 'grid', gridTemplateRows: '1fr auto 1fr', gap: 6, minHeight: 150 }}>
-      <Tile name={ev.home} w={w} h="100%" big />
+    <div style={{ display: 'grid', gridTemplateRows: '1fr auto 1fr', gap: 6, minHeight: 150, width: w }}>
+      <div style={box}><Crest name={ev.home} size={Math.round(w * 0.62)} /></div>
       <div style={{ border: `1px solid ${C.line}`, background: C.bgTop, textAlign: 'center', padding: '4px 0', ...num }}>
         {ev.state === 'open' && <div style={{ fontSize: 10, color: C.muted, lineHeight: 1 }}>GMT</div>}
         <div style={{ fontSize: 14, fontWeight: 800, color: ev.state === 'closed' ? C.noText : C.text }}>{mid}</div>
       </div>
-      <Tile name={ev.away} w={w} h="100%" big />
+      <div style={box}><Crest name={ev.away} size={Math.round(w * 0.62)} /></div>
     </div>
   )
 }

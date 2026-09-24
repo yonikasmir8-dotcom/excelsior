@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { api } from './api.js'
 import { C, clubStyle, compStyle, display, fmt, num, share, useIsMobile, useLive } from './theme.js'
-import { Empty, ErrorBox, Icon, SearchBar, Tile, notify } from './ui.jsx'
+import { Crest, Empty, ErrorBox, Icon, SearchBar, notify } from './ui.jsx'
 import { FollowChips, tagName, useFollows } from './opinion.jsx'
 
 const DAY = 864e5
@@ -80,7 +80,7 @@ export default function CalendarPage() {
       {Object.entries(groups).map(([comp, list]) => (
         <section key={comp} style={{ display: 'grid', gap: 8, marginTop: 6 }}>
           <button onClick={() => setCollapsed({ ...collapsed, [comp]: !collapsed[comp] })} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'none', border: 'none', color: C.text, padding: 0, cursor: 'pointer', textAlign: 'left' }}>
-            <div style={{ width: 44, height: 44, background: compStyle(comp).bg, color: compStyle(comp).ink, border: `1px solid ${C.text}`, display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 13 }}>{compStyle(comp).code}</div>
+            <div style={{ width: 44, height: 44, background: '#fff', border: `1px solid ${C.text}`, display: 'grid', placeItems: 'center' }}><Crest name={comp} size={34} /></div>
             <span style={{ ...display, fontSize: 17, flex: 1 }}>{comp}</span>
             <span style={{ transform: collapsed[comp] ? 'rotate(-90deg)' : 'none', display: 'inline-flex' }}><Icon name="down" size={18} /></span>
           </button>
@@ -110,7 +110,7 @@ function Fixture({ ev, mobile, liked, onLike }) {
   }
   return (
     <div style={{ display: 'grid', gridTemplateColumns: `${tile}px minmax(0,1fr) ${tile}px`, gap: 4 }}>
-      <div style={{ display: 'grid', gap: 4, alignContent: 'start' }}><Tile name={ev.home} w={tile} h={tile} crest />{code(ev.home)}</div>
+      <div style={{ display: 'grid', gap: 4, alignContent: 'start' }}><div style={{ width: tile, height: tile, background: '#fff', display: 'grid', placeItems: 'center' }}><Crest name={ev.home} size={Math.round(tile * 0.78)} /></div>{code(ev.home)}</div>
       <div style={{ display: 'grid', gridTemplateRows: '1fr auto', gap: 4, minWidth: 0 }}>
         <a href={`#/event/${ev.slug}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto minmax(0,1fr)', alignItems: 'center', gap: 6, background: C.surface2, padding: '0 10px', minHeight: tile, fontSize: mobile ? 13 : 15, fontWeight: 700 }}>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.home}</span>
@@ -126,7 +126,7 @@ function Fixture({ ev, mobile, liked, onLike }) {
         </div>
         {ev.state === 'open' && <a href={`#/event/${ev.slug}`} style={{ fontSize: 12, color: C.accent, fontWeight: 700, textAlign: 'center' }}>View opinions · {fmt.shares(ev.players)} players</a>}
       </div>
-      <div style={{ display: 'grid', gap: 4, alignContent: 'start' }}><Tile name={ev.away} w={tile} h={tile} crest />{code(ev.away)}</div>
+      <div style={{ display: 'grid', gap: 4, alignContent: 'start' }}><div style={{ width: tile, height: tile, background: '#fff', display: 'grid', placeItems: 'center' }}><Crest name={ev.away} size={Math.round(tile * 0.78)} /></div>{code(ev.away)}</div>
     </div>
   )
 }

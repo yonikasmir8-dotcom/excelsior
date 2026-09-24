@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react'
-import { C, FONT, GRADIENT, clubStyle, display, fmt, num } from './theme.js'
+import React, { useEffect, useState as useStateUi } from 'react'
+
+import { C, FONT, GRADIENT, clubStyle, crestUrl, display, fmt, num } from './theme.js'
 import logo from './assets/logo.png'
 
 export const LOGO = logo
@@ -308,5 +309,20 @@ function overlay(message, buttons) {
 export const confirmDialog = (message, okLabel = 'Confirm') => overlay(message, [['Cancel', false], [okLabel, true, true]])
 export const notify = message => overlay(message, [['OK', true, true]])
 
-// Kept for older call sites
-export const Crest = ({ name, size = 36 }) => <Tile name={name} w={size} h={size} />
+// Real crest when we have one; club-colour shield otherwise (and if the image fails to load)
+export function Crest({ name, size = 32, style }) {
+  const url = crestUrl(name)
+  const [bad, setBad] = useStateUi(false)
+  if (!url || bad) {
+    const s = clubStyle(name)
+    return (
+      <span aria-hidden style={{ width: size, height: size, display: 'inline-grid', placeItems: 'center', flexShrink: 0, ...style }}>
+        <svg viewBox="0 0 40 46" width={size * 0.86} height={size}>
+          <path d="M20 2 37 8v14c0 11-7.5 18.5-17 22C10.5 40.5 3 33 3 22V8z" fill={s.bg} stroke={s.bg === '#ffffff' || s.bg === '#000000' ? '#777' : s.ink} strokeWidth="2" />
+          <text x="20" y="27" textAnchor="middle" fontSize={s.code.length > 2 ? 11 : 13} fontWeight="800" fill={s.ink} fontFamily="Helvetica, Arial, sans-serif">{s.code}</text>
+        </svg>
+      </span>
+    )
+  }
+  return <img src={url} alt="" width={size} height={size} loading="lazy" onError={() => setBad(true)} style={{ width: size, height: size, objectFit: 'contain', flexShrink: 0, ...style }} />
+}

@@ -133,8 +133,24 @@ function marketView(m) {
   return {
     id: m.id, code: m.code, label: m.label, question: m.question, grp: m.grp, rules: m.rules,
     status: m.status, outcome: m.outcome, price, change_24h: prev ? price - prev.price : 0,
-    last_price: m.last_price, volume: vol, ...qt,
+    last_price: m.last_price, volume: vol, ...qt, spark: spark(m.id, price),
   };
+}
+
+// ~24 evenly spaced prices over the last 7 days, for card sparklines
+function spark(marketId, current) {
+  const from = new Date(Date.now() - 7 * 864e5).toISOString();
+  const start = db.prepare('SELECT price FROM price_history WHERE market_id = ? AND created_at < ? ORDER BY id DESC LIMIT 1').get(marketId, from);
+  const rows = db.prepare('SELECT price, created_at FROM price_history WHERE market_id = ? AND created_at >= ? ORDER BY id').all(marketId, from);
+  const out = [];
+  let i = 0, last = start ? start.price : rows[0]?.price ?? current;
+  for (let k = 0; k < 24; k++) {
+    const t = new Date(Date.now() - 7 * 864e5 + (k / 23) * 7 * 864e5).toISOString();
+    while (i < rows.length && rows[i].created_at <= t) last = rows[i++].price;
+    out.push(last);
+  }
+  out[23] = current;
+  return out;
 }
 
 function eventView(ev, { full = false } = {}) {

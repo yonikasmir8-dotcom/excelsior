@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { subscribe } from './api.js'
+import CRESTS from './crests.json'
 
 // Game Knight design tokens — lifted from the pitch deck: true-black canvas with a
 // purple cast at the top of the screen, #171717 cards on #303030 strips, magenta
@@ -105,6 +106,15 @@ export function clubStyle(name = '') {
   return { bg: `hsl(${h} 55% 32%)`, ink: '#ffffff', code: initials(name) || '?' }
 }
 export const compStyle = name => (COMPS[name] ? { bg: COMPS[name][0], ink: COMPS[name][1], code: COMPS[name][2] } : clubStyle(name))
+
+// Crest URLs (football-logos.cc via the football-logos package). Standalone builds swap in
+// embedded data: URIs when the build machine could download them.
+const normName = s => s.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/\b(fc|afc|cf|ac|as|sc|vfb|rc|ssc|calcio|club|de|logo)\b/g, '').replace(/[^a-z0-9]/g, '')
+export function crestUrl(name = '') {
+  const u = CRESTS.comps[name] || CRESTS.teams[normName(name)]
+  if (!u) return null
+  return globalThis.__GK_CRESTS?.[u] ?? (globalThis.__GK_CRESTS_ONLY ? null : u)
+}
 
 export function useIsMobile() {
   const [m, setM] = useState(() => window.innerWidth <= 720)

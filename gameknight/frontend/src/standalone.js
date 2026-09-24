@@ -2,6 +2,11 @@
 // persists its SQLite database to IndexedDB. Only bundled in `--mode standalone`.
 import { boot } from '../../standalone/.build/backend.js'
 import { BUILT_AT, SEED_B64 } from '../../standalone/.build/seed.js'
+import { CRESTS_INLINE, CRESTS_ONLY } from '../../standalone/.build/crests-inline.js'
+
+// Embedded crests (sandboxed viewers block external images)
+globalThis.__GK_CRESTS = CRESTS_INLINE
+globalThis.__GK_CRESTS_ONLY = CRESTS_ONLY
 
 const DB_NAME = 'gameknight', STORE = 'db', KEY = 'main'
 let rt = null

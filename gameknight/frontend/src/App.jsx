@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { api, getToken, setToken, STANDALONE } from './api.js'
-import { C, FONT, display, fmt, num, useIsMobile, useLive } from './theme.js'
-import { Icon, LOGO, notify } from './ui.jsx'
+import { C, FONT, clubStyle, display, fmt, num, useIsMobile, useLive } from './theme.js'
+import { Crest, Icon, LOGO, notify } from './ui.jsx'
+import { Toaster } from './fx.jsx'
 import { loadFollows } from './opinion.jsx'
 import AuthPage from './AuthPage.jsx'
 import HomePage from './HomePage.jsx'
@@ -106,12 +107,13 @@ export default function App() {
   return (
     <div style={{ minHeight: '100vh', background: `linear-gradient(180deg, ${C.bgTop} 0, ${C.bg} 320px)`, color: C.text, fontFamily: FONT }}>
       <header style={{ position: 'sticky', top: 'env(safe-area-inset-top, 0px)', zIndex: 30, background: `${C.bgTop}f2`, backdropFilter: 'blur(10px)', borderBottom: `1px solid ${C.line}` }}>
-        <div style={{ maxWidth: 1100, margin: '0 auto', padding: '0 16px', height: 58, display: 'grid', gridTemplateColumns: mobile ? '56px 1fr 56px' : '1fr auto 1fr', alignItems: 'center', gap: 8 }}>
+        <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 16px', height: mobile ? 58 : 64, display: 'grid', gridTemplateColumns: mobile ? '56px 1fr 56px' : 'auto minmax(0,1fr) auto auto', alignItems: 'center', gap: mobile ? 8 : 20 }}>
           <a href="#/" aria-label="Game Knight home" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <img src={LOGO} alt="" style={{ height: 38, width: 'auto' }} />
             {!mobile && <span style={{ ...display, fontSize: 19 }}>Game Knight</span>}
           </a>
-          {mobile ? <div style={{ justifySelf: 'center', minWidth: 0 }}>{greeting}</div> : (
+          {mobile ? <div style={{ justifySelf: 'center', minWidth: 0 }}>{greeting}</div> : <GlobalSearch />}
+          {!mobile && (
             <nav style={{ display: 'flex', gap: 2 }}>
               {NAV.map(n => (
                 <a key={n.page} href={n.href} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 11px', fontSize: 15, fontWeight: 700, color: active(n) ? C.accent : C.text2 }}>
@@ -127,11 +129,12 @@ export default function App() {
         </div>
       </header>
 
-      <main key={route.page + (route.id || '')} style={{ maxWidth: route.page === 'admin' || route.page === 'docs' ? 1000 : 640, margin: '0 auto', padding: mobile ? '14px 16px 100px' : '24px 16px 56px', animation: 'gk-fade .2s ease' }}>
+      <main key={route.page + (route.id || '')} style={{ maxWidth: ['home', 'event'].includes(route.page) ? 1280 : ['admin', 'docs'].includes(route.page) ? 1000 : 760, margin: '0 auto', padding: mobile ? '14px 16px 100px' : '24px 16px 56px', animation: 'gk-fade .2s ease' }}>
         {content}
       </main>
 
-      <footer style={{ maxWidth: 640, margin: '0 auto', padding: mobile ? '0 16px 104px' : '0 16px 32px', color: C.muted, fontSize: 12, lineHeight: 1.6 }}>
+      <Toaster />
+      <footer style={{ maxWidth: 1280, margin: '0 auto', padding: mobile ? '0 16px 104px' : '0 16px 32px', color: C.muted, fontSize: 12, lineHeight: 1.6 }}>
         <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
           {STANDALONE && <strong style={{ color: C.accent }}>On-device demo: everything runs and is saved on this phone. </strong>}
           Game Knight uses Knight Coins ({fmt.kc(100)} each), a play-money currency with no cash value.
@@ -153,6 +156,49 @@ export default function App() {
             </a>
           ))}
         </nav>
+      )}
+    </div>
+  )
+}
+
+// Header search with instant results (desktop)
+function GlobalSearch() {
+  const [q, setQ] = React.useState('')
+  const [res, setRes] = React.useState(null)
+  const [open, setOpen] = React.useState(false)
+  React.useEffect(() => {
+    if (!q.trim()) { setRes(null); return }
+    const t = setTimeout(() => api.events({ q: q.trim().replace(/^#/, ''), status: 'all', sort: 'volume' }).then(r => setRes(r.slice(0, 7))).catch(() => setRes([])), 180)
+    return () => clearTimeout(t)
+  }, [q])
+  const goTo = slug => { setOpen(false); setQ(''); window.location.hash = `/event/${slug}` }
+  return (
+    <div style={{ position: 'relative', maxWidth: 440, width: '100%' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#161616', border: `1px solid ${C.line}`, padding: '0 12px', color: C.muted }}>
+        <Icon name="search" size={18} />
+        <input value={q} onChange={e => { setQ(e.target.value); setOpen(true) }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+          onKeyDown={e => { if (e.key === 'Enter' && res?.[0]) goTo(res[0].slug) }}
+          placeholder="Search teams, players, leagues" aria-label="Search opinions"
+          style={{ flex: 1, minWidth: 0, background: 'none', border: 'none', outline: 'none', color: C.text, padding: '10px 0', fontSize: 14, fontFamily: FONT }} />
+        <kbd style={{ fontSize: 11, color: C.muted, border: `1px solid ${C.line}`, padding: '1px 5px' }}>↵</kbd>
+      </label>
+      {open && res && (
+        <div style={{ position: 'absolute', top: 44, left: 0, right: 0, background: '#121212', border: `1px solid ${C.lineLight}`, boxShadow: '0 20px 50px #000', zIndex: 50 }}>
+          {!res.length && <div style={{ padding: 14, color: C.muted, fontSize: 14 }}>No opinions match “{q}”.</div>}
+          {res.map(ev => {
+            const lead = [...ev.markets].filter(m => ['result', 'winner'].includes(m.grp)).sort((a, b) => b.price - a.price)[0]
+            return (
+              <button key={ev.id} onMouseDown={() => goTo(ev.slug)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: 'none', border: 'none', borderTop: `1px solid ${C.line}`, color: C.text, cursor: 'pointer', textAlign: 'left', fontFamily: FONT }}>
+                {ev.kind === 'match' ? <span style={{ display: 'flex' }}><Crest name={ev.home} size={22} /><Crest name={ev.away} size={22} /></span> : <Crest name={ev.competition} size={24} />}
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: 'block', fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.title}</span>
+                  <span style={{ fontSize: 12, color: C.muted }}>{ev.competition}</span>
+                </span>
+                {lead && <span style={{ fontSize: 13, fontWeight: 800, whiteSpace: 'nowrap', ...num }}>{clubStyle(lead.label).code} <span style={{ color: C.accent }}>{fmt.pct(lead.price)}</span></span>}
+              </button>
+            )
+          })}
+        </div>
       )}
     </div>
   )
