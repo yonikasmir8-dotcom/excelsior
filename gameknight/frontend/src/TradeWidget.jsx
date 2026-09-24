@@ -63,7 +63,7 @@ export default function TradeWidget({ market, outcome, setOutcome, user, holding
       <button type="button" onClick={() => setOutcome(o)} style={{
         flex: 1, padding: '12px 8px', borderRadius: 8, border: `1px solid ${active ? col : C.line}`, cursor: 'pointer', fontWeight: 800, fontSize: 15,
         background: active ? col : C.surface2, color: active ? C.bg : C.text2, ...num,
-      }}>{o === 'YES' ? 'Yes' : 'No'} {px != null ? `${px}¢` : ''}</button>
+      }}>{o === 'YES' ? 'Yes' : 'No'} {px != null ? fmt.cents(px) : ''}</button>
     )
   }
 
@@ -100,8 +100,8 @@ export default function TradeWidget({ market, outcome, setOutcome, user, holding
       </div>
 
       {type === 'limit' && (
-        <Field label="Limit price">
-          <Stepper value={price} onChange={setPrice} suffix="¢" onMinus={() => bump(setPrice, price, -1, 1, 99)} onPlus={() => bump(setPrice, price, 1, 1, 99)} placeholder="0" />
+        <Field label="Limit price per unit" hint={Number(price) ? fmt.cents(Number(price)) : '1–99'}>
+          <Stepper value={price} onChange={setPrice} suffix="/100" onMinus={() => bump(setPrice, price, -1, 1, 99)} onPlus={() => bump(setPrice, price, 1, 1, 99)} placeholder="0" />
         </Field>
       )}
       {type === 'market' && side === 'buy' ? (
@@ -129,7 +129,7 @@ export default function TradeWidget({ market, outcome, setOutcome, user, holding
       {preview && (
         <div style={{ background: C.bg, borderRadius: 8, padding: 12, fontSize: 13, display: 'grid', gap: 6, marginBottom: 10 }}>
           {type === 'limit' && <Line k="Fills now" v={`${fmt.shares(preview.filled)} of ${fmt.shares(preview.size)} shares`} />}
-          {type === 'limit' && preview.resting > 0 && <Line k="Rests on book" v={`${fmt.shares(preview.resting)} @ ${preview.price}¢`} />}
+          {type === 'limit' && preview.resting > 0 && <Line k="Rests on book" v={`${fmt.shares(preview.resting)} @ ${fmt.cents(preview.price)}`} />}
           {preview.filled > 0 && <Line k="Avg price" v={fmt.cents(preview.avg_price)} />}
           {type === 'market' && side === 'buy' && <Line k="Shares" v={fmt.shares(preview.filled)} />}
           {side === 'buy' && preview.filled > 0 && type === 'market' && (
@@ -143,7 +143,7 @@ export default function TradeWidget({ market, outcome, setOutcome, user, holding
       {done && (
         <div role="status" style={{ fontSize: 13, color: C.yes, background: C.yesBg, borderRadius: 8, padding: '10px 12px', marginTop: 8 }}>
           ✓ {done.filled ? `${done.side === 'buy' ? 'Bought' : 'Sold'} ${fmt.shares(done.filled)} ${done.outcome === 'YES' ? 'Yes' : 'No'} @ ${fmt.cents(done.avg_price)}` : 'Order placed'}
-          {done.resting > 0 && ` · ${fmt.shares(done.resting)} resting @ ${done.price}¢`}
+          {done.resting > 0 && ` · ${fmt.shares(done.resting)} resting @ ${fmt.cents(done.price)}`}
         </div>
       )}
       {user ? (
@@ -152,10 +152,10 @@ export default function TradeWidget({ market, outcome, setOutcome, user, holding
           {busy ? 'Placing…' : `${side === 'buy' ? 'Buy' : 'Sell'} ${outcome === 'YES' ? 'Yes' : 'No'}${type === 'limit' ? ' (limit)' : ''}`}
         </Button>
       ) : (
-        <a href="#/login"><Button style={{ width: '100%', marginTop: 10, padding: '13px 16px' }}>Sign up to trade — get 1,000 KC free</Button></a>
+        <a href="#/login"><Button style={{ width: '100%', marginTop: 10, padding: '13px 16px' }}>Sign up free to play</Button></a>
       )}
       <div style={{ fontSize: 11, color: C.muted, marginTop: 8, textAlign: 'center' }}>
-        Each winning share pays 1 KC. Play money — no cash value.
+        Each winning unit pays ₭1.00. Play money, no cash value.
       </div>
     </Card>
   )

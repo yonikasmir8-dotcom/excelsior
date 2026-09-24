@@ -1,0 +1,16 @@
+{
+  "name": "GameKnight — Football Prediction Exchange",
+  "short_name": "GameKnight",
+  "description": "Trade YES/NO shares on football results, goals and title races.",
+  "start_url": "/#/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0b110e",
+  "theme_color": "#0b110e",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

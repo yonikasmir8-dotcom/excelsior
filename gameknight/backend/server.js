@@ -65,8 +65,15 @@ function priceMap(marketIds) {
   return out;
 }
 
+// Other outcomes in the same exclusive group (1X2 / outright), for opinion cards
+function siblings(r) {
+  if (!['result', 'winner'].includes(r.grp)) return null;
+  return db.prepare("SELECT * FROM markets WHERE event_id = ? AND grp = ? ORDER BY last_price DESC LIMIT 4").all(r.event_id, r.grp)
+    .map(m => ({ market_id: m.id, label: m.label, price: ex.displayPrice(m), outcome: m.outcome }));
+}
+
 function openPositions(userId) {
-  const rows = db.prepare(`SELECT p.*, m.label, m.question, m.code, m.grp, m.status AS market_status, m.event_id,
+  const rows = db.prepare(`SELECT p.*, m.label, m.question, m.code, m.grp, m.status AS market_status, m.event_id, e.home, e.away,
       e.title AS event_title, e.slug, e.kind, e.competition, e.closes_at, e.status AS event_status
     FROM positions p JOIN markets m ON m.id = p.market_id JOIN events e ON e.id = m.event_id
     WHERE p.user_id = ? AND (p.yes > 0 OR p.no > 0) ORDER BY e.closes_at`).all(userId);
@@ -80,8 +87,9 @@ function openPositions(userId) {
       out.push({
         market_id: r.market_id, event_id: r.event_id, slug: r.slug, event_title: r.event_title, competition: r.competition,
         question: r.question, label: r.label, outcome, shares, avg_price: cost / shares, cost, price: px,
-        value: shares * px, pnl: shares * px - cost, closes_at: r.closes_at,
-        state: events.eventState({ status: r.event_status, closes_at: r.closes_at }),
+        value: shares * px, pnl: shares * px - cost, closes_at: r.closes_at, grp: r.grp, code: r.code, kind: r.kind,
+        home: r.home, away: r.away, state: events.eventState({ status: r.event_status, closes_at: r.closes_at }),
+        siblings: siblings(r),
       });
     }
   }
@@ -140,6 +148,8 @@ function eventView(ev, { full = false } = {}) {
     starts_at: ev.starts_at, closes_at: ev.closes_at, state: events.eventState(ev), home_score: ev.home_score, away_score: ev.away_score,
     volume: markets.reduce((s, m) => s + m.volume, 0), volume_24h: vol24, liquidity,
     comments: db.prepare('SELECT COUNT(*) AS n FROM comments WHERE event_id = ?').get(ev.id).n,
+    players: ids.length ? db.prepare(`SELECT COUNT(DISTINCT u) AS n FROM (SELECT taker_id AS u FROM trades WHERE market_id IN (${ph})
+      UNION SELECT maker_id FROM trades WHERE market_id IN (${ph})) WHERE u NOT IN (SELECT id FROM users WHERE is_house = 1)`).get(...ids, ...ids).n : 0,
     markets,
   };
   if (full) view.description = ev.description;
@@ -266,9 +276,15 @@ app.delete('/api/keys/:id', requireAuth, wrap(req => {
 app.get('/api/categories', wrap(() => db.prepare(`SELECT competition AS name, COUNT(*) AS events FROM events
   WHERE status = 'open' AND closes_at > ? GROUP BY competition ORDER BY events DESC`).all(now())));
 
-app.get('/api/events', wrap(req => {
-  const { category, q: search, sort = 'trending', status = 'open', kind } = req.query;
+app.get('/api/events', optionalAuth, wrap(req => {
+  const { category, q: search, sort = 'trending', status = 'open', kind, from, to, following } = req.query;
   let rows = db.prepare('SELECT * FROM events ORDER BY closes_at').all();
+  if (from) rows = rows.filter(e => (e.starts_at || e.closes_at) >= from);
+  if (to) rows = rows.filter(e => (e.starts_at || e.closes_at) < to);
+  if (following && req.user) {
+    const tags = db.prepare('SELECT tag FROM follows WHERE user_id = ?').all(req.user.id).map(r => r.tag);
+    rows = rows.filter(e => tags.some(t => matchesTag(e, t)));
+  }
   if (category) rows = rows.filter(e => e.competition === category);
   if (kind) rows = rows.filter(e => e.kind === kind);
   if (search) {
@@ -340,6 +356,154 @@ app.get('/api/markets/:id/holders', wrap(req => {
   return { yes: top('yes'), no: top('no') };
 }));
 
+// ── Tailored experience: follows + tags ─────────────────────────────────────
+function matchesTag(ev, tag) {
+  const [kind, ...rest] = tag.split(':');
+  const v = rest.join(':');
+  if (kind === 'comp') return ev.competition === v;
+  if (kind === 'event') return String(ev.id) === v;
+  if (kind === 'team' || kind === 'player') {
+    return ev.home === v || ev.away === v
+      || !!db.prepare('SELECT 1 FROM markets WHERE event_id = ? AND label = ?').get(ev.id, v);
+  }
+  return false;
+}
+
+app.get('/api/tags', wrap(() => {
+  const teams = db.prepare("SELECT home AS name FROM events WHERE kind = 'match' UNION SELECT away FROM events WHERE kind = 'match'").all().map(r => r.name);
+  const contenders = db.prepare("SELECT DISTINCT m.label, e.title FROM markets m JOIN events e ON e.id = m.event_id WHERE m.grp = 'winner'").all();
+  const teamSet = new Set(teams);
+  const players = [...new Set(contenders.filter(c => /scorer|boot|player/i.test(c.title) && !/^other/i.test(c.label)).map(c => c.label))];
+  for (const c of contenders) if (!/scorer|boot|player/i.test(c.title) && !/^other/i.test(c.label)) teamSet.add(c.label);
+  const comps = db.prepare('SELECT DISTINCT competition FROM events').all().map(r => r.competition);
+  // Most-traded teams first, so the suggestion chips lead with what's hot
+  const vol = {}
+  for (const r of db.prepare(`SELECT e.home AS h, e.away AS a, COALESCE(SUM(t.notional), 0) AS v FROM events e
+    JOIN markets m ON m.event_id = e.id LEFT JOIN trades t ON t.market_id = m.id WHERE e.kind = 'match' GROUP BY e.id`).all()) {
+    vol[r.h] = (vol[r.h] || 0) + r.v
+    vol[r.a] = (vol[r.a] || 0) + r.v
+  }
+  return [
+    ...[...teamSet].sort((x, y) => (vol[y] || 0) - (vol[x] || 0) || x.localeCompare(y)).map(n => ({ tag: `team:${n}`, name: n, kind: 'team' })),
+    ...players.map(n => ({ tag: `player:${n}`, name: n, kind: 'player' })),
+    ...comps.map(n => ({ tag: `comp:${n}`, name: n, kind: 'comp' })),
+  ];
+}));
+
+app.get('/api/me/follows', requireAuth, wrap(req => db.prepare('SELECT tag FROM follows WHERE user_id = ? ORDER BY created_at').all(req.user.id).map(r => r.tag)));
+app.post('/api/me/follows', requireAuth, wrap(req => {
+  const tag = String(req.body?.tag || '');
+  if (!/^(team|player|comp|event):.{1,80}$/.test(tag)) throw new ApiError(400, 'Invalid tag');
+  if (db.prepare('SELECT COUNT(*) AS n FROM follows WHERE user_id = ?').get(req.user.id).n >= 100) throw new ApiError(400, 'Following limit reached');
+  db.prepare('INSERT OR IGNORE INTO follows (user_id, tag, created_at) VALUES (?, ?, ?)').run(req.user.id, tag, now());
+  return { ok: true };
+}));
+app.delete('/api/me/follows', requireAuth, wrap(req => {
+  db.prepare('DELETE FROM follows WHERE user_id = ? AND tag = ?').run(req.user.id, String(req.query.tag || ''));
+  return { ok: true };
+}));
+
+// ── News: the market wire (results, movers, big calls, new listings) + optional RSS ──
+let rssCache = { at: 0, items: [] };
+async function rssItems() {
+  const url = process.env.NEWS_RSS_URL;
+  if (!url || typeof fetch !== 'function') return [];
+  if (Date.now() - rssCache.at < 10 * 60e3) return rssCache.items;
+  try {
+    const xml = await (await fetch(url, { signal: AbortSignal.timeout(5000) })).text();
+    const pick = (block, tag) => (block.match(new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${tag}>`)) || [])[1]?.trim();
+    rssCache = {
+      at: Date.now(),
+      items: [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 20).map(([, b]) => ({
+        kind: 'article', title: pick(b, 'title'), link: pick(b, 'link'), at: new Date(pick(b, 'pubDate') || Date.now()).toISOString(),
+        image: (b.match(/<media:thumbnail[^>]*url="([^"]+)"/) || [])[1] || null, source: new URL(url).hostname.replace(/^www\.|^feeds\./, ''),
+      })),
+    };
+  } catch { /* keep the last good copy */ }
+  return rssCache.items;
+}
+
+app.get('/api/news', wrap(async () => {
+  const items = [];
+  for (const e of db.prepare("SELECT * FROM events WHERE status != 'open' ORDER BY resolved_at DESC LIMIT 8").all()) {
+    const paid = db.prepare('SELECT COALESCE(SUM(s.payout), 0) AS v, COUNT(DISTINCT s.user_id) AS n FROM settlements s JOIN markets m ON m.id = s.market_id WHERE m.event_id = ?').get(e.id);
+    items.push({
+      kind: 'result', at: e.resolved_at, slug: e.slug, competition: e.competition, home: e.home, away: e.away,
+      title: e.status === 'void' ? `${e.title} voided — every opinion refunded at 50%`
+        : e.kind === 'match' ? `FT: ${e.home} ${e.home_score}–${e.away_score} ${e.away}` : `${e.title} settled`,
+      body: `${paid.n} players paid out ₭${(paid.v / 100).toLocaleString('en-GB', { maximumFractionDigits: 0 })} across ${db.prepare('SELECT COUNT(*) AS n FROM markets WHERE event_id = ?').get(e.id).n} opinions.`,
+    });
+  }
+  const open = db.prepare("SELECT m.*, e.slug, e.title AS event_title, e.competition, e.home, e.away FROM markets m JOIN events e ON e.id = m.event_id WHERE m.status = 'open' AND e.status = 'open' AND e.closes_at > ?").all(now());
+  const movers = open.map(m => {
+    const prev = db.prepare('SELECT price, created_at FROM price_history WHERE market_id = ? AND created_at <= ? ORDER BY id DESC LIMIT 1').get(m.id, since24h());
+    const price = ex.displayPrice(m);
+    return { m, price, move: prev ? price - prev.price : 0 };
+  }).filter(x => Math.abs(x.move) >= 4).sort((a, b) => Math.abs(b.move) - Math.abs(a.move)).slice(0, 6);
+  for (const { m, price, move } of movers) {
+    const last = db.prepare('SELECT created_at FROM trades WHERE market_id = ? ORDER BY id DESC LIMIT 1').get(m.id);
+    items.push({
+      kind: 'mover', at: last?.created_at || now(), slug: m.slug, competition: m.competition, home: m.home, away: m.away, label: m.label,
+      title: `${m.question} ${move > 0 ? 'surges' : 'slides'} to ${price}%`,
+      body: `${move > 0 ? 'Up' : 'Down'} ${Math.abs(move)} points in 24 hours on ${m.event_title}. The crowd is ${move > 0 ? 'piling in' : 'cooling off'}.`,
+    });
+  }
+  for (const t of db.prepare(`SELECT t.*, u.username, m.question, m.label, e.slug, e.competition, e.home, e.away FROM trades t JOIN users u ON u.id = t.taker_id
+      JOIN markets m ON m.id = t.market_id JOIN events e ON e.id = m.event_id WHERE u.is_house = 0 AND t.created_at >= ? ORDER BY t.notional DESC LIMIT 4`).all(since24h())) {
+    items.push({
+      kind: 'big-call', at: t.created_at, slug: t.slug, competition: t.competition, home: t.home, away: t.away, label: t.label,
+      title: `Big call: ${t.username} backs ${t.taker_outcome === 'YES' ? '' : 'against '}${t.label}`,
+      body: `${t.size.toLocaleString()} units at ₭${((t.taker_outcome === 'YES' ? t.price : 100 - t.price) / 100).toFixed(2)} on "${t.question}"`,
+    });
+  }
+  for (const e of db.prepare("SELECT * FROM events WHERE status = 'open' AND closes_at > ? ORDER BY created_at DESC LIMIT 3").all(now())) {
+    items.push({ kind: 'listing', at: e.created_at, slug: e.slug, competition: e.competition, home: e.home, away: e.away, title: `New opinions: ${e.title}`, body: `${db.prepare('SELECT COUNT(*) AS n FROM markets WHERE event_id = ?').get(e.id).n} questions open until ${new Date(e.closes_at).toUTCString().slice(0, 22)} GMT.` });
+  }
+  items.push(...await rssItems());
+  return items.filter(i => i.at).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 40);
+}));
+
+// ── Insights: data-backed reads on an event, or the whole board ─────────────
+app.get('/api/insights', wrap(req => {
+  const pct = n => `${Math.round(n)}%`;
+  const out = [];
+  if (req.query.event) {
+    const ev = findEvent(String(req.query.event));
+    const view = eventView(ev);
+    const ms = db.prepare('SELECT * FROM markets WHERE event_id = ?').all(ev.id);
+    const fav = [...view.markets].filter(m => ['result', 'winner'].includes(m.grp)).sort((a, b) => b.price - a.price)[0];
+    if (fav) out.push({ title: 'Crowd favourite', body: `${fav.label} at ${pct(fav.price)} — decimal odds of ${(100 / Math.max(fav.price, 1)).toFixed(2)}.` });
+    for (const m of ms) {
+      const mv = view.markets.find(x => x.id === m.id);
+      const gap = m.fair - mv.price;
+      if (Math.abs(gap) >= 3 && m.status === 'open') out.push({ title: gap > 0 ? 'Model says undervalued' : 'Model says overvalued', body: `"${m.question}" trades at ${pct(mv.price)}; our goals model and order flow put it nearer ${pct(m.fair)}.`, market_id: m.id });
+      if (Math.abs(mv.change_24h) >= 4) out.push({ title: mv.change_24h > 0 ? 'Momentum' : 'Drifting', body: `"${m.question}" has moved ${mv.change_24h > 0 ? '+' : ''}${mv.change_24h} points in 24h.`, market_id: m.id });
+    }
+    const goals = view.markets.find(m => m.code === 'OVER25');
+    if (goals) out.push({ title: 'Goals outlook', body: `The market prices ${pct(goals.price)} for 3+ goals and ${pct(view.markets.find(m => m.code === 'BTTS')?.price ?? 50)} for both teams scoring.` });
+    const top = db.prepare(`SELECT u.username, SUM(t.notional) AS v FROM trades t JOIN users u ON u.id = t.taker_id JOIN markets m ON m.id = t.market_id
+      WHERE m.event_id = ? AND u.is_house = 0 GROUP BY u.id ORDER BY v DESC LIMIT 1`).get(ev.id);
+    if (top) out.push({ title: 'Biggest player', body: `${top.username} has put ${(top.v / 100).toFixed(0)} KC into this event.` });
+    out.push({ title: 'Depth', body: `${view.players} players, ${(view.liquidity / 100).toFixed(0)} KC resting in the order book, ${(view.volume / 100).toFixed(0)} KC traded.` });
+  } else {
+    const open = db.prepare("SELECT m.*, e.slug, e.title AS event_title FROM markets m JOIN events e ON e.id = m.event_id WHERE m.status = 'open' AND e.status = 'open' AND e.closes_at > ?").all(now());
+    const scored = open.map(m => ({ m, price: ex.displayPrice(m) })).map(x => ({ ...x, gap: x.m.fair - x.price }));
+    for (const x of scored.filter(x => Math.abs(x.gap) >= 3).sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap)).slice(0, 4)) {
+      out.push({ title: x.gap > 0 ? 'Value spot' : 'Looks rich', body: `${x.m.question} — market ${pct(x.price)}, model ${pct(x.m.fair)}.`, slug: x.m.slug, market_id: x.m.id });
+    }
+    const hot = db.prepare(`SELECT e.slug, e.title, SUM(t.notional) AS v FROM trades t JOIN markets m ON m.id = t.market_id JOIN events e ON e.id = m.event_id
+      WHERE t.created_at >= ? GROUP BY e.id ORDER BY v DESC LIMIT 3`).all(since24h());
+    for (const h of hot) out.push({ title: 'Most traded today', body: `${h.title}: ${(h.v / 100).toFixed(0)} KC in 24h.`, slug: h.slug });
+    const q = String(req.query.q || '').toLowerCase().trim();
+    if (q) {
+      const hits = open.filter(m => `${m.question} ${m.event_title}`.toLowerCase().includes(q)).slice(0, 5);
+      out.unshift(...hits.map(m => ({ title: m.event_title, body: `${m.question} — ${pct(ex.displayPrice(m))} (model ${pct(m.fair)})`, slug: m.slug, market_id: m.id })));
+      if (!hits.length) out.unshift({ title: 'No match', body: `Nothing open mentions "${q}". Try a team, player or competition.` });
+    }
+  }
+  return out;
+}));
+
 // ── Comments ─────────────────────────────────────────────────────────────────
 app.get('/api/events/:id/comments', wrap(req => {
   const ev = findEvent(req.params.id);
@@ -399,9 +563,10 @@ app.get('/api/portfolio', requireAuth, wrap(req => {
       CASE WHEN t.taker_id = @u THEN t.notional ELSE ${MAKER_CASH} END AS cash
     FROM trades t JOIN markets m ON m.id = t.market_id JOIN events e ON e.id = m.event_id
     WHERE t.taker_id = @u OR t.maker_id = @u ORDER BY t.id DESC LIMIT 100`).all({ u: req.user.id });
-  const settled = db.prepare(`SELECT p.realized, m.label, m.question, m.outcome, m.status, e.title AS event_title, e.slug, e.resolved_at
-    FROM positions p JOIN markets m ON m.id = p.market_id JOIN events e ON e.id = m.event_id
-    WHERE p.user_id = ? AND m.status != 'open' AND p.realized != 0 ORDER BY e.resolved_at DESC LIMIT 100`).all(req.user.id);
+  const settled = db.prepare(`SELECT s.yes, s.no, s.cost, s.payout, s.payout - s.cost AS realized, s.created_at, m.id AS market_id, m.label, m.question,
+      m.outcome, m.status, m.grp, e.title AS event_title, e.slug, e.home, e.away, e.kind, e.home_score, e.away_score, e.resolved_at
+    FROM settlements s JOIN markets m ON m.id = s.market_id JOIN events e ON e.id = m.event_id
+    WHERE s.user_id = ? ORDER BY s.id DESC LIMIT 100`).all(req.user.id);
   return { ...publicUser(req.user), ...value, history, settled, volume: userVolume(req.user.id) };
 }));
 

@@ -134,12 +134,19 @@ function placeOrderTx(input, pending) {
   assertTradable(market);
   const user = q.user.get(userId);
 
-  let price, size, budget = null;
+  let price, size, budget = null, payg = false;
   if (type === 'limit') {
     price = Number(input.price);
     size = Number(input.size);
     if (!Number.isInteger(price) || price < 1 || price > 99) throw new ApiError(400, 'Price must be a whole number of cents between 1 and 99');
     if (!Number.isInteger(size) || size < 1) throw new ApiError(400, 'Size must be a whole number of shares');
+    if (size > 1e6) throw new ApiError(400, 'Order too large');
+  } else if (side === 'buy' && input.amount == null) {
+    // Market buy of N units: pay per fill at the best prices, as many as the balance allows
+    price = 99;
+    payg = true;
+    size = Number(input.size);
+    if (!Number.isInteger(size) || size < 1) throw new ApiError(400, 'Enter a whole number of units');
     if (size > 1e6) throw new ApiError(400, 'Order too large');
   } else if (side === 'buy') {
     price = 99;
@@ -153,8 +160,9 @@ function placeOrderTx(input, pending) {
   }
 
   // Escrow: cash for buys, share availability for sells
-  const escrow = side === 'buy' ? (budget ?? price * size) : 0;
+  const escrow = side === 'buy' && !payg ? (budget ?? price * size) : 0;
   if (side === 'buy' && escrow > user.balance) throw new ApiError(400, 'Insufficient balance');
+  if (payg && user.balance < 1) throw new ApiError(400, 'Insufficient balance');
   if (side === 'sell' && available(userId, marketId, outcome) < size) throw new ApiError(400, `You don't have ${size} ${outcome} shares available to sell`);
 
   const book = toBook(outcome, side, price);
@@ -165,7 +173,8 @@ function placeOrderTx(input, pending) {
 
   const taker = q.order.get(orderId);
   const fills = [];
-  let cashLeft = budget;
+  let cashLeft = payg ? user.balance : budget;
+  const capped = budget != null || payg;
   let paid = 0, received = 0;
   const touched = new Set([userId]);
 
@@ -183,11 +192,11 @@ function placeOrderTx(input, pending) {
     const P = maker.book_price;
     const tOwn = ownPrice(taker, P);
     let s = Math.min(taker.size - taker.filled, maker.size - maker.filled);
-    if (budget != null) s = Math.min(s, Math.floor(cashLeft / tOwn));
+    if (capped) s = Math.min(s, Math.floor(cashLeft / tOwn));
     if (s <= 0) break;
 
-    settleFill(taker, maker, P, s, budget != null);
-    if (taker.side === 'buy') { paid += tOwn * s; if (budget != null) cashLeft -= tOwn * s; }
+    settleFill(taker, maker, P, s, budget != null ? 'budget' : payg ? 'payg' : null);
+    if (taker.side === 'buy') { paid += tOwn * s; if (capped) cashLeft -= tOwn * s; }
     else received += tOwn * s;
     taker.filled += s;
     fills.push({ price: P, own_price: tOwn, size: s, maker_id: maker.user_id });
@@ -197,7 +206,7 @@ function placeOrderTx(input, pending) {
   // Finalise the taker order: market orders never rest (immediate-or-cancel)
   let status;
   if (type === 'market') {
-    if (!taker.filled) throw new ApiError(400, 'No liquidity available right now');
+    if (!taker.filled) throw new ApiError(400, payg && user.balance < 99 ? 'Not enough balance to buy at the current price' : 'No liquidity available right now');
     if (budget != null) {
       taker.size = taker.filled;
       if (cashLeft) credit(userId, cashLeft, 'order_refund', orderId);
@@ -229,16 +238,21 @@ function placeOrderTx(input, pending) {
 }
 
 // Apply one fill between the incoming order and a resting maker at YES price P.
-function settleFill(taker, maker, P, s, takerBudget) {
+// takerMode: 'budget' (escrowed a cash amount), 'payg' (pays per fill), or null (escrowed at its limit)
+function settleFill(taker, maker, P, s, takerMode) {
   const ts = now();
   for (const o of [taker, maker]) {
     const c = ownPrice(o, P);
     const pos = getPos(o.user_id, o.market_id);
     if (o.side === 'buy') {
       addShares(pos, o.outcome, s, c * s);
-      // Buyers escrowed at their limit; refund any price improvement
-      const improvement = (o.price - c) * s;
-      if (improvement > 0 && !(o === taker && takerBudget)) credit(o.user_id, improvement, 'order_refund', o.id);
+      if (o === taker && takerMode === 'payg') {
+        credit(o.user_id, -c * s, 'fill', o.id);
+      } else {
+        // Buyers escrowed at their limit; refund any price improvement
+        const improvement = (o.price - c) * s;
+        if (improvement > 0 && !(o === taker && takerMode === 'budget')) credit(o.user_id, improvement, 'order_refund', o.id);
+      }
     } else {
       removeShares(pos, o.outcome, s, c * s);
       credit(o.user_id, c * s, 'fill', o.id);
@@ -302,6 +316,8 @@ function resolveMarketTx(marketId, outcome) {
   for (const p of db.prepare('SELECT * FROM positions WHERE market_id = ? AND (yes > 0 OR no > 0)').all(marketId)) {
     const payout = outcome === 'YES' ? p.yes * PAIR : outcome === 'NO' ? p.no * PAIR : (p.yes + p.no) * (PAIR / 2);
     q.savePos.run({ ...p, yes: 0, no: 0, yes_cost: 0, no_cost: 0, realized: p.realized + payout - p.yes_cost - p.no_cost });
+    db.prepare('INSERT INTO settlements (user_id, market_id, yes, no, cost, payout, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(p.user_id, marketId, p.yes, p.no, p.yes_cost + p.no_cost, payout, now());
     credit(p.user_id, payout, 'payout', marketId);
     paid += payout;
   }

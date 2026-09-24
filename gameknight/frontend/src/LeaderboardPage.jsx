@@ -15,7 +15,7 @@ export default function LeaderboardPage({ me }) {
   return (
     <div style={{ maxWidth: 860, margin: '0 auto' }}>
       <Heading style={{ marginBottom: 4 }}>Leaderboard</Heading>
-      <p style={{ color: C.muted, marginTop: 0, fontSize: 14 }}>Profit = portfolio value minus coins received. Volume = KC traded.</p>
+      <p style={{ color: C.muted, marginTop: 0, fontSize: 14 }}>Profit = portfolio value minus coins received. Volume = Knight Coins traded.</p>
       <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
         <Segmented value={by} onChange={setBy} options={[['profit', 'Profit'], ['volume', 'Volume']]} style={{ width: 200 }} />
         {by === 'volume' && <Segmented value={period} onChange={setPeriod} options={[['all', 'All time'], ['week', 'This week']]} style={{ width: 220 }} />}
@@ -36,7 +36,7 @@ export default function LeaderboardPage({ me }) {
               </span>
               {!mobile && <span style={{ textAlign: 'right', color: C.text2, ...num }}>{by === 'profit' ? `${fmt.kcShort(r.volume)} vol` : <span style={{ color: r.profit >= 0 ? C.yes : C.no }}>{fmt.signed(r.profit)}</span>}</span>}
               <span style={{ textAlign: 'right', fontWeight: 800, ...num, color: by === 'profit' ? (r.profit >= 0 ? C.yes : C.no) : C.text }}>
-                {by === 'profit' ? fmt.signed(r.profit) : `${fmt.kcShort(r.volume)} KC`}
+                {by === 'profit' ? fmt.signed(r.profit) : fmt.kcShort(r.volume)}
               </span>
             </div>
           )

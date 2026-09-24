@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { api } from './api.js'
 import { C, fmt, useIsMobile } from './theme.js'
-import { Button, Card, Empty, ErrorBox, Heading, Input, Label, Segmented, StateBadge } from './ui.jsx'
+import { Button, Card, Empty, ErrorBox, Heading, Input, Label, Segmented, StateBadge, confirmDialog } from './ui.jsx'
 
 export default function AdminPage() {
   const [mode, setMode] = useState('match')
@@ -28,7 +28,7 @@ export default function AdminPage() {
             {health.ok ? '✓ Ledger reconciled · all markets balanced' : `⚠ ${health.ledger_mismatch.length} ledger mismatches, ${health.unbalanced_markets.length} unbalanced markets`}
           </span>
         )}
-        {health?.house && <span style={{ fontSize: 13, color: C.muted }}>House MM P&L {fmt.signed(health.house.profit)} KC · {fmt.kcShort(health.house.in_orders)} KC quoting</span>}
+        {health?.house && <span style={{ fontSize: 13, color: C.muted }}>House market maker P&L {fmt.signed(health.house.profit)} · {fmt.kcShort(health.house.in_orders)} quoting</span>}
         <Button kind="ghost" style={{ marginLeft: 'auto' }} onClick={() => run(api.admin.syncFeed, r => `Feed: ${r.created} created, ${r.resolved} resolved, ${r.voided} voided`)}>Sync fixtures feed</Button>
       </div>
       {msg && <div style={{ color: C.yes, marginBottom: 12 }}>✓ {msg}</div>}
@@ -123,7 +123,7 @@ function ResolveRow({ ev, run }) {
             <Input type="number" min="0" placeholder={ev.home} value={h} onChange={e => setH(e.target.value)} style={{ width: 90 }} aria-label={`${ev.home} goals`} />
             <span style={{ color: C.muted }}>–</span>
             <Input type="number" min="0" placeholder={ev.away} value={a} onChange={e => setA(e.target.value)} style={{ width: 90 }} aria-label={`${ev.away} goals`} />
-            <Button disabled={h === '' || a === ''} onClick={() => confirm(`Resolve ${ev.home} ${h}–${a} ${ev.away}? Pays out all 7 markets; cannot be undone.`)
+            <Button disabled={h === '' || a === ''} onClick={async () => await confirmDialog(`Resolve ${ev.home} ${h}–${a} ${ev.away}? Pays out all 7 markets; cannot be undone.`, 'Resolve')
               && run(() => api.admin.resolve(ev.id, { home_score: Number(h), away_score: Number(a) }), r => `Resolved — paid ${fmt.kc(r.paid)}`)}>Resolve</Button>
           </>
         ) : (
@@ -132,13 +132,13 @@ function ResolveRow({ ev, run }) {
               <option value="">Winner…</option>
               {ev.markets.filter(m => m.status === 'open').map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
-            <Button disabled={!winner} onClick={() => confirm('Resolve this outright? Cannot be undone.')
+            <Button disabled={!winner} onClick={async () => await confirmDialog('Resolve this outright? Cannot be undone.', 'Resolve')
               && run(() => api.admin.resolve(ev.id, { winner_market_id: Number(winner) }), r => `Resolved — paid ${fmt.kc(r.paid)}`)}>Resolve</Button>
             <Button kind="ghost" disabled={!winner} title="Eliminate this contender (resolve NO) without closing the event"
               onClick={() => run(() => api.admin.resolveMarket(Number(winner), 'NO'), () => 'Contender eliminated')}>Eliminate</Button>
           </>
         )}
-        <Button kind="danger" onClick={() => confirm(`Void ${ev.title}? Every share pays 50¢.`) && run(() => api.admin.voidEvent(ev.id), () => 'Voided')}>Void</Button>
+        <Button kind="danger" onClick={async () => await confirmDialog(`Void ${ev.title}? Every unit pays ₭0.50.`, 'Void') && run(() => api.admin.voidEvent(ev.id), () => 'Voided')}>Void</Button>
       </div>
     </Card>
   )

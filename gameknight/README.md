@@ -1,4 +1,6 @@
-# ♞ GameKnight — Football Prediction Exchange
+# Game Knight: Football Opinions Exchange
+
+*Your Insights. Your Opinions. Your Win!*
 
 A Polymarket-style prediction exchange built only for football. Fans buy and sell **YES/NO shares** on match results, goal lines and season outrights. The price of a YES share is the market's probability: **54¢ means 54%**. A winning share redeems for 100¢ (1 KC).
 
@@ -21,6 +23,37 @@ A Polymarket-style prediction exchange built only for football. Fans buy and sel
 
 - **Every match (7 markets):** Home win · Draw · Away win · Over 1.5 · Over 2.5 · Over 3.5 · Both teams to score. All settle on the 90-minute score, with extra time and penalties excluded.
 - **Outrights:** a title winner, Champions League winner, Golden Boot or any custom event, with one binary market per contender. An admin can eliminate a contender early or resolve the winner.
+
+## Design
+
+The UI follows the Game Knight pitch deck:
+
+- **Brand:** true-black canvas with a purple cast, `#171717` cards on `#303030` strips, magenta `#d103e6` for the backed outcome and the active tab, green for Buy and profit, red for loss, Helvetica-style bold type, and the magenta footballer logo.
+- **Navigation:** the deck's five tabs, *News · Calendar · Home · Opinions · Profile*, with a "Hey, {name}" header, white search bar and ✦ insights bar.
+- **Screens:**
+  - **Simple Yes/No:** opinion cards with the Players and Ends-in strip, price boxes (₭0.49 per unit) and club-colour tiles.
+  - **Opinion detail:** # of Units → Potential Win → Buy, the Yes/No Opinions Graph, News Sources, Opinion Rules and Related Opinions.
+  - **Tailored:** follow #teams, #players and #leagues.
+  - **Complete stack:** fixtures calendar with Add to My Calendar.
+  - **Shareability:** a news wire with share buttons.
+  - **Transparency:** Profit, Invested and Closing on every opinion.
+- **Trading depth:** power features (order book, limit orders, selling) sit behind "Advanced" on each opinion.
+
+Prices are shown in Knight Coins (₭). One winning unit pays ₭1.00, and the API still works in integer hundredths.
+
+## Run it on a phone (no server)
+
+```bash
+node standalone/build.mjs     # → frontend/dist-standalone/gameknight.html (~2 MB, one file)
+```
+
+The whole exchange runs inside the phone's browser:
+
+- the unchanged backend is bundled with sql.js (SQLite in JavaScript) and small browser shims for express and crypto
+- it ships with a pre-seeded database and saves to IndexedDB
+- it auto-settles matches with simulated scores and lists new fixtures, so the demo stays alive
+
+The hosted version is also an installable PWA (manifest, icons, service worker).
 
 ## Architecture
 

@@ -94,6 +94,22 @@ test('market buy by amount walks the book and refunds unspent cash', () => {
   assertConserved(assert);
 });
 
+test('market buy by units pays per fill and never rests', () => {
+  const { markets } = newMatch();
+  const mk = makeUser(), t = makeUser(), poor = makeUser(500);
+  order(mk, markets.BTTS, 'NO', 'buy', 60, 10); // ask 40 ×10
+  order(mk, markets.BTTS, 'NO', 'buy', 55, 10); // ask 45 ×10
+  const r = ex.placeOrder({ userId: t, marketId: markets.BTTS, outcome: 'YES', side: 'buy', type: 'market', size: 15 });
+  assert.equal(r.filled, 15);
+  assert.equal(r.cost, 400 + 5 * 45);
+  assert.equal(bal(t), 1000_00 - 625);
+  assert.equal(db.prepare('SELECT status FROM orders WHERE id = ?').get(r.order_id).status, 'filled');
+  const r2 = ex.placeOrder({ userId: poor, marketId: markets.BTTS, outcome: 'YES', side: 'buy', type: 'market', size: 50 });
+  assert.equal(r2.filled, 5, 'fills only what the balance allows (5 remaining @45 → 225, then 275 left buys nothing more)');
+  assert.ok(bal(poor) >= 0);
+  assertConserved(assert);
+});
+
 test('market order with no liquidity fails cleanly and leaves nothing behind', () => {
   const { markets } = newMatch();
   const t = makeUser();

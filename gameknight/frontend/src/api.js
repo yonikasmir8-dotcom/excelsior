@@ -1,5 +1,7 @@
 // All API calls. Money and prices are integer cents on the wire (100¢ = 1 KC).
 const BASE = import.meta.env.VITE_API_URL || '/api'
+// Standalone build: the whole backend runs inside this tab (see standalone.js)
+export const STANDALONE = import.meta.env.VITE_STANDALONE === 'true'
 const TOKEN_KEY = 'gk_token'
 
 export const getToken = () => { try { return localStorage.getItem(TOKEN_KEY) } catch { return null } }
@@ -7,6 +9,16 @@ export const setToken = t => { try { t ? localStorage.setItem(TOKEN_KEY, t) : lo
 
 async function request(method, path, body) {
   const token = getToken()
+  if (STANDALONE) {
+    const { localFetch } = await import('./standalone.js')
+    const r = await localFetch(method, path, body, token)
+    if (r.status >= 400) {
+      const err = new Error(r.body?.error || `Request failed (${r.status})`)
+      err.status = r.status
+      throw err
+    }
+    return r.body
+  }
   let res
   try {
     res = await fetch(BASE + path, {
@@ -40,6 +52,12 @@ export const api = {
   revokeKey: id => request('DELETE', `/keys/${id}`),
 
   stats: () => request('GET', '/stats'),
+  tags: () => request('GET', '/tags'),
+  follows: () => request('GET', '/me/follows'),
+  follow: tag => request('POST', '/me/follows', { tag }),
+  unfollow: tag => request('DELETE', `/me/follows?tag=${encodeURIComponent(tag)}`),
+  news: () => request('GET', '/news'),
+  insights: params => request('GET', `/insights?${qs(params || {})}`),
   categories: () => request('GET', '/categories'),
   events: params => request('GET', `/events?${qs(params)}`),
   event: slug => request('GET', `/events/${encodeURIComponent(slug)}`),
@@ -75,7 +93,10 @@ const listeners = new Set()
 let source = null
 export function subscribe(fn) {
   listeners.add(fn)
-  if (!source && typeof EventSource !== 'undefined') {
+  if (STANDALONE && !source) {
+    source = true
+    import('./standalone.js').then(m => m.onMessage(msg => listeners.forEach(l => l(msg))))
+  } else if (!source && typeof EventSource !== 'undefined') {
     source = new EventSource(`${BASE}/stream`)
     source.onmessage = e => { try { const msg = JSON.parse(e.data); listeners.forEach(l => l(msg)) } catch {} }
   }

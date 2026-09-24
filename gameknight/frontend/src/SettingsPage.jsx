@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
-import { api } from './api.js'
+import { api, STANDALONE } from './api.js'
 import { C, fmt } from './theme.js'
-import { Button, Card, Empty, ErrorBox, Heading, Input, Label } from './ui.jsx'
+import { Button, Card, Empty, ErrorBox, Heading, Input, Label, confirmDialog } from './ui.jsx'
 
 export default function SettingsPage({ user }) {
   const [bio, setBio] = useState('')
@@ -19,7 +19,7 @@ export default function SettingsPage({ user }) {
     e.preventDefault(); setError('')
     try { setFresh(await api.createKey(label || 'API key')); setLabel(''); loadKeys() } catch (err) { setError(err.message) }
   }
-  const revoke = async id => { if (confirm('Revoke this key? Anything using it will stop working.')) { await api.revokeKey(id); loadKeys() } }
+  const revoke = async id => { if (await confirmDialog('Revoke this key? Anything using it will stop working.', 'Revoke')) { await api.revokeKey(id); loadKeys() } }
 
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', display: 'grid', gap: 18 }}>
@@ -31,7 +31,17 @@ export default function SettingsPage({ user }) {
           <div><Button type="submit">{saved ? '✓ Saved' : 'Save'}</Button></div>
         </form>
       </Card>
-      <Card style={{ padding: 16 }}>
+      {STANDALONE && (
+        <Card style={{ padding: 16 }}>
+          <Label>On-device demo</Label>
+          <p style={{ fontSize: 14, color: C.text2, marginTop: 0, lineHeight: 1.6 }}>
+            This copy of GameKnight runs entirely on your phone — the exchange, the market maker and the database live in this browser.
+            Your account and trades are saved on this device only. Matches settle with simulated scores two hours after kick-off, and new fixtures appear as old ones finish.
+          </p>
+          <Button kind="danger" onClick={async () => { if (await confirmDialog('Wipe this device\'s GameKnight data and start fresh?', 'Reset')) (await import('./standalone.js')).resetDemo() }}>Reset demo</Button>
+        </Card>
+      )}
+      {!STANDALONE && <Card style={{ padding: 16 }}>
         <Label>API keys</Label>
         <p style={{ fontSize: 14, color: C.text2, marginTop: 0 }}>
           Trade programmatically — run a market-making bot, hedge from a spreadsheet, build an integration. Send the key as an
@@ -46,7 +56,7 @@ export default function SettingsPage({ user }) {
           <div style={{ background: C.yesBg, border: `1px solid ${C.yes}55`, borderRadius: 8, padding: 12, marginBottom: 12, fontSize: 13 }}>
             <div style={{ fontWeight: 700, marginBottom: 6 }}>Copy your new key now — it won't be shown again.</div>
             <code style={{ display: 'block', background: C.bg, padding: 8, borderRadius: 6, overflowWrap: 'anywhere', fontSize: 13 }}>{fresh.key}</code>
-            <button onClick={() => navigator.clipboard?.writeText(fresh.key)} style={{ marginTop: 8, background: 'none', border: `1px solid ${C.line}`, borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>Copy</button>
+            <button onClick={() => navigator.clipboard?.writeText(fresh.key).catch(() => {})} style={{ marginTop: 8, background: 'none', border: `1px solid ${C.line}`, borderRadius: 6, padding: '4px 10px', cursor: 'pointer' }}>Copy</button>
           </div>
         )}
         {!keys.length && <Empty>No API keys yet.</Empty>}
@@ -59,7 +69,7 @@ export default function SettingsPage({ user }) {
             <Button kind="danger" onClick={() => revoke(k.id)} style={{ padding: '6px 12px' }}>Revoke</Button>
           </div>
         ))}
-      </Card>
+      </Card>}
     </div>
   )
 }

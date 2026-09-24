@@ -25,7 +25,7 @@ export default function OrderBook({ marketId, outcome = 'YES', onPickPrice }) {
   const mid = asks[0] && bids[0] ? (asks[0].price + bids[0].price) / 2 : null
 
   const Row = ({ l, kind }) => (
-    <button type="button" onClick={() => onPickPrice?.(l.price, kind)} title={`Use ${l.price}¢`} style={{
+    <button type="button" onClick={() => onPickPrice?.(l.price, kind)} title={`Use ${fmt.cents(l.price)}`} style={{
       display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', width: '100%', padding: '4px 10px', fontSize: 13, position: 'relative',
       background: 'none', border: 'none', cursor: onPickPrice ? 'pointer' : 'default', ...num,
     }}>
@@ -33,7 +33,7 @@ export default function OrderBook({ marketId, outcome = 'YES', onPickPrice }) {
         position: 'absolute', right: 0, top: 1, bottom: 1, width: `${(l.total / max) * 100}%`,
         background: kind === 'ask' ? C.noBg : C.yesBg, borderRadius: 3,
       }} />
-      <span style={{ position: 'relative', textAlign: 'left', color: kind === 'ask' ? C.no : C.yes, fontWeight: 700 }}>{l.price}¢</span>
+      <span style={{ position: 'relative', textAlign: 'left', color: kind === 'ask' ? C.noText : C.yesText, fontWeight: 700 }}>{fmt.cents(l.price)}</span>
       <span style={{ position: 'relative', textAlign: 'right', color: C.text2 }}>{fmt.shares(l.size)}</span>
       <span style={{ position: 'relative', textAlign: 'right', color: C.text2 }}>{fmt.kcShort(l.total)}</span>
     </button>
@@ -42,12 +42,12 @@ export default function OrderBook({ marketId, outcome = 'YES', onPickPrice }) {
   return (
     <div style={{ fontSize: 13 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', padding: '0 10px 6px', fontSize: 11, color: C.muted, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        <span>Trade {outcome === 'YES' ? 'Yes' : 'No'}</span><span style={{ textAlign: 'right' }}>Shares</span><span style={{ textAlign: 'right' }}>Total KC</span>
+        <span>Trade {outcome === 'YES' ? 'Yes' : 'No'}</span><span style={{ textAlign: 'right' }}>Units</span><span style={{ textAlign: 'right' }}>Total</span>
       </div>
       {a.map(l => <Row key={`a${l.price}`} l={l} kind="ask" />)}
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', margin: '4px 0', borderTop: `1px solid ${C.line}`, borderBottom: `1px solid ${C.line}`, color: C.muted, fontSize: 12 }}>
         <span>{mid != null ? `Mid ${fmt.cents(mid)}` : 'One-sided book'}</span>
-        <span>{spread != null ? `Spread ${spread}¢` : ''}</span>
+        <span>{spread != null ? `Spread ${fmt.cents(spread)}` : ''}</span>
       </div>
       {b.map(l => <Row key={`b${l.price}`} l={l} kind="bid" />)}
     </div>

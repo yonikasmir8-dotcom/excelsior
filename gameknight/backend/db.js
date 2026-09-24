@@ -136,6 +136,27 @@ db.exec(`
     created_at TEXT NOT NULL
   );
 
+  -- One row per position at resolution, so settled opinions keep what was held
+  CREATE TABLE IF NOT EXISTS settlements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    market_id INTEGER NOT NULL REFERENCES markets(id) ON DELETE CASCADE,
+    yes INTEGER NOT NULL,
+    no INTEGER NOT NULL,
+    cost INTEGER NOT NULL,
+    payout INTEGER NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_settlements_user ON settlements(user_id, id);
+
+  -- "Tailored experience": teams, players, competitions and matches a user follows
+  CREATE TABLE IF NOT EXISTS follows (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    tag TEXT NOT NULL,                           -- e.g. "team:Arsenal", "player:Erling Haaland", "comp:Premier League", "event:12"
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, tag)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_book ON orders(market_id, status, book_side, book_price, id);
   CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id, status);
   CREATE INDEX IF NOT EXISTS idx_trades_market ON trades(market_id, id);

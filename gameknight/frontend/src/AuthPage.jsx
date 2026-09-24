@@ -1,7 +1,16 @@
 import React, { useState } from 'react'
 import { api } from './api.js'
-import { C, display } from './theme.js'
-import { Button, Card, ErrorBox, Input, Label } from './ui.jsx'
+import { C, display, fmt } from './theme.js'
+import { Button, ErrorBox, GradientRule, Input, LOGO } from './ui.jsx'
+
+const PILLARS = [
+  ['Simple Yes/No', 'Back an opinion in two taps. No betting-slip clutter.'],
+  ['Insights', 'Data-backed reads on every match, from live prices and our goals model.'],
+  ['Tailored', 'Follow your #teams, #players and #leagues.'],
+  ['Complete stack', 'Fixtures calendar, news and opinions in one place.'],
+  ['Shareable', 'Invite mates to a match and share your winning calls.'],
+  ['Transparent', 'Profit, invested and closing value on every opinion.'],
+]
 
 export default function AuthPage({ onAuth }) {
   const [mode, setMode] = useState('register')
@@ -13,63 +22,54 @@ export default function AuthPage({ onAuth }) {
   const submit = async e => {
     e.preventDefault()
     setBusy(true); setError('')
-    try {
-      onAuth(await (mode === 'register' ? api.register(username, password) : api.login(username, password)))
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setBusy(false)
-    }
+    try { onAuth(await (mode === 'register' ? api.register(username, password) : api.login(username, password))) } catch (err) { setError(err.message) } finally { setBusy(false) }
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 32, alignItems: 'center', minHeight: '60vh' }}>
-      <div>
-        <div style={{ ...display, fontSize: 'clamp(44px, 8vw, 72px)', fontWeight: 800, lineHeight: 0.95, textTransform: 'uppercase' }}>
-          Back your<br />football <span style={{ color: C.accent }}>brain.</span>
-        </div>
-        <p style={{ color: C.text2, fontSize: 17, lineHeight: 1.55, maxWidth: 460, marginTop: 20 }}>
-          GameKnight is a prediction exchange for football. Buy YES or NO on results, goals and title races —
-          each winning share pays <strong style={{ color: C.text }}>1 KC</strong>. Prices are set by fans on a live order book,
-          so a share at 62¢ means the market thinks it's a 62% shot.
+    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr)', gap: 26 }}>
+      <div style={{ textAlign: 'center', paddingTop: 8 }}>
+        <img src={LOGO} alt="Game Knight" style={{ height: 150, width: 'auto' }} />
+        <div style={{ ...display, fontSize: 38, color: '#d9d9d9', marginTop: 10 }}>Game Knight</div>
+        <GradientRule />
+        <div style={{ fontWeight: 700, color: '#d9d9d9', fontSize: 17 }}>Your Insights. Your Opinions. Your Win!</div>
+        <p style={{ color: C.muted, fontSize: 15, lineHeight: 1.55, maxWidth: 460, margin: '14px auto 0' }}>
+          The one-stop platform for everything football. Back your opinions on every result, scoreline and title race,
+          and turn real-time insight into wins with your mates.
         </p>
-        <ul style={{ color: C.text2, fontSize: 15, lineHeight: 1.9, paddingLeft: 18, margin: 0 }}>
-          <li>Start with <strong style={{ color: C.text }}>1,000 Knight Coins</strong>, +100 every day</li>
-          <li>7 markets on every fixture + season outrights (title, Champions League, Golden Boot)</li>
-          <li>Market and limit orders, sell any time before kick-off</li>
-          <li>Deep liquidity from day one — our market maker quotes every market</li>
-          <li>Public API for bots and market makers</li>
-        </ul>
       </div>
 
-      <Card style={{ padding: 24, maxWidth: 420, width: '100%', justifySelf: 'center' }}>
-        <div style={{ display: 'flex', gap: 4, background: C.bg, borderRadius: 10, padding: 4, marginBottom: 20 }}>
+      <form onSubmit={submit} style={{ display: 'grid', gap: 10, background: C.surface, border: `1px solid ${C.line}`, padding: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 4 }}>
           {[['register', 'Create account'], ['login', 'Sign in']].map(([m, t]) => (
-            <button key={m} onClick={() => { setMode(m); setError('') }} style={{
-              flex: 1, padding: '9px 0', borderRadius: 7, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 14,
-              background: mode === m ? C.surface2 : 'transparent', color: mode === m ? C.text : C.muted,
+            <button key={m} type="button" onClick={() => { setMode(m); setError('') }} style={{
+              padding: '9px 0', border: `1px solid ${mode === m ? C.accent : C.text}`, background: mode === m ? C.accent : 'transparent',
+              color: C.text, fontWeight: 700, fontSize: 15, cursor: 'pointer',
             }}>{t}</button>
           ))}
         </div>
-        <form onSubmit={submit} style={{ display: 'grid', gap: 14 }}>
-          <div>
-            <Label>Username</Label>
-            <Input value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" placeholder="e.g. TheGaffer" required />
+        <Input light value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" placeholder="Username" aria-label="Username" required />
+        <Input light type="password" value={password} onChange={e => setPassword(e.target.value)} aria-label="Password"
+          autoComplete={mode === 'register' ? 'new-password' : 'current-password'} placeholder={mode === 'register' ? 'Password (8+ characters)' : 'Password'} required />
+        <ErrorBox>{error}</ErrorBox>
+        <Button type="submit" kind="buy" disabled={busy} style={{ padding: '13px 16px', fontSize: 16 }}>
+          {busy ? '…' : mode === 'register' ? `Kick off with ${fmt.kc(100000)}` : 'Sign in'}
+        </Button>
+        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>Knight Coins are play money with no cash value. Plus {fmt.kc(10000)} free every day.</div>
+      </form>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 1, background: C.line, border: `1px solid ${C.line}` }}>
+        {PILLARS.map(([t, d]) => (
+          <div key={t} style={{ background: C.bg, padding: '12px 14px' }}>
+            <div style={{ ...display, fontSize: 16 }}>{t}</div>
+            <div style={{ fontSize: 13, color: C.muted, marginTop: 3, lineHeight: 1.45 }}>{d}</div>
           </div>
-          <div>
-            <Label>Password</Label>
-            <Input type="password" value={password} onChange={e => setPassword(e.target.value)}
-              autoComplete={mode === 'register' ? 'new-password' : 'current-password'} placeholder={mode === 'register' ? 'At least 8 characters' : ''} required />
-          </div>
-          <ErrorBox>{error}</ErrorBox>
-          <Button type="submit" disabled={busy} style={{ padding: '12px 16px', fontSize: 15 }}>
-            {busy ? '…' : mode === 'register' ? 'Kick off — claim 1,000 KC' : 'Sign in'}
-          </Button>
-          <p style={{ fontSize: 12, color: C.muted, margin: 0, lineHeight: 1.5 }}>
-            Play money only. Knight Coins have no cash value and can't be purchased or withdrawn.
-          </p>
-        </form>
-      </Card>
+        ))}
+      </div>
+
+      <blockquote style={{ margin: 0, textAlign: 'right' }}>
+        <div style={{ ...display, fontSize: 20 }}>Football isn't a game, nor a sport; it's a religion.</div>
+        <div style={{ color: C.muted, marginTop: 4 }}>Diego Maradona</div>
+      </blockquote>
     </div>
   )
 }

@@ -92,9 +92,12 @@ function schedule(marketId) {
   });
 }
 
-function requoteAll() {
+// onlyMissing: skip markets the house is already quoting (fast restarts)
+function requoteAll({ onlyMissing = false } = {}) {
   const ids = db.prepare(`SELECT m.id FROM markets m JOIN events e ON e.id = m.event_id
-    WHERE m.status = 'open' AND e.status = 'open' AND e.closes_at > ?`).all(now()).map(r => r.id);
+    WHERE m.status = 'open' AND e.status = 'open' AND e.closes_at > ?
+    ${onlyMissing ? "AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.market_id = m.id AND o.user_id = ? AND o.status = 'open')" : ''}`)
+    .all(...(onlyMissing ? [now(), houseId] : [now()])).map(r => r.id);
   ids.forEach(id => requote(id));
   return ids.length;
 }
@@ -110,7 +113,7 @@ function start(hashPassword) {
   if (started) return;
   started = true;
   bus.on('trade', t => { try { onTrade(t); } catch (e) { console.error('mm', e.message); } });
-  requoteAll();
+  requoteAll({ onlyMissing: true });
 }
 
 module.exports = { start, flush, requote, requoteAll, ensureHouse, getHouseId: () => houseId, HOUSE_NAME };

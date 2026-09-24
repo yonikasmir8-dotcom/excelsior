@@ -36,7 +36,7 @@ function matchProbabilities(xgHome, xgAway) {
 const toCents = p => Math.min(97, Math.max(3, Math.round(p * 100)));
 
 const FT = 'after 90 minutes plus stoppage time (extra time and penalty shoot-outs do not count)';
-const VOID_RULE = 'If the match is abandoned, or postponed and not played within 48 hours of the scheduled kick-off, the market resolves 50/50 (every share redeems for 50¢).';
+const VOID_RULE = 'If the match is abandoned, or postponed and not played within 48 hours of the scheduled kick-off, the market is voided and every unit pays ₭0.50.';
 
 function matchMarkets(home, away) {
   const fx = `${home} v ${away}`;
@@ -103,7 +103,7 @@ function createOutrightEvent({ competition, title, question, closesAt, contender
       const q = (question || 'Will {name} win?').replace('{name}', c.name);
       const { lastInsertRowid } = insertMarket.run({
         event_id: eventId, code: 'TEAM', grp: 'winner', label: c.name, question: q, sort: i, fair, created_at: createdAt,
-        rules: `Resolves YES if ${c.name} is the officially declared winner of "${title}". Resolves NO otherwise. If the competition is cancelled without a winner, every market resolves 50/50.`,
+        rules: `Resolves YES if ${c.name} is the officially declared winner of "${title}". Resolves NO otherwise. If the competition is cancelled without a winner, every market is voided and every unit pays ₭0.50.`,
       });
       insertHistory.run(lastInsertRowid, fair, createdAt);
     });
