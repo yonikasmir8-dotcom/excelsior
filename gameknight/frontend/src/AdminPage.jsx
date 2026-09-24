@@ -7,6 +7,7 @@ export default function AdminPage() {
   const [mode, setMode] = useState('match')
   const [events, setEvents] = useState([])
   const [health, setHealth] = useState(null)
+  const [finance, setFinance] = useState(null)
   const [msg, setMsg] = useState('')
   const [error, setError] = useState('')
   const mobile = useIsMobile()
@@ -15,6 +16,7 @@ export default function AdminPage() {
     const [open, closed] = await Promise.all([api.events({ status: 'closed', sort: 'ending' }), api.events({ status: 'open', sort: 'ending' })])
     setEvents([...open, ...closed])
     api.admin.health().then(setHealth).catch(() => {})
+    api.admin.finance().then(setFinance).catch(() => {})
   }
   useEffect(() => { load().catch(e => setError(e.message)) }, [])
   const run = async (fn, ok) => { setError(''); setMsg(''); try { const r = await fn(); setMsg(ok(r)); load() } catch (e) { setError(e.message) } }
@@ -31,6 +33,20 @@ export default function AdminPage() {
         {health?.house && <span style={{ fontSize: 13, color: C.muted }}>House market maker P&L {fmt.signed(health.house.profit)} · {fmt.kcShort(health.house.in_orders)} quoting</span>}
         <Button kind="ghost" style={{ marginLeft: 'auto' }} onClick={() => run(api.admin.syncFeed, r => `Feed: ${r.created} created, ${r.resolved} resolved, ${r.voided} voided`)}>Sync fixtures feed</Button>
       </div>
+      {finance && (
+        <Card style={{ padding: 14, marginBottom: 14, display: 'grid', gap: 8 }}>
+          <Label>Money & compliance</Label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, fontSize: 14 }}>
+            {[['Customer cash', finance.customer_cash], ['In open orders', finance.customer_escrow], ['Pending withdrawals', finance.pending_withdrawals], ['Platform fees', finance.platform_fees], ['Deposits (all time)', finance.deposits_total], ['Withdrawals (all time)', finance.withdrawals_total]].map(([k, v]) => (
+              <div key={k}><div style={{ color: C.muted, fontSize: 12 }}>{k}</div><strong>{fmt.kc(v)}</strong></div>
+            ))}
+          </div>
+          <div style={{ fontSize: 13, color: finance.launch.ok ? C.yesText : '#eda100' }}>
+            {finance.launch.ok ? `Mode: ${finance.launch.mode}` : `Real money locked: ${finance.launch.missing.join('; ')}`}
+            {finance.flags.length > 0 && <> · Flags: {finance.flags.map(f => `${f.action.replace('flag.', '')} (${f.users})`).join(', ')}</>}
+          </div>
+        </Card>
+      )}
       {msg && <div style={{ color: C.yes, marginBottom: 12 }}>✓ {msg}</div>}
       <ErrorBox>{error}</ErrorBox>
 

@@ -24,6 +24,27 @@ A Polymarket-style prediction exchange built only for football. Fans buy and sel
 - **Every match (7 markets):** Home win · Draw · Away win · Over 1.5 · Over 2.5 · Over 3.5 · Both teams to score. All settle on the 90-minute score, with extra time and penalties excluded.
 - **Outrights:** a title winner, Champions League winner, Golden Boot or any custom event, with one binary market per contender. An admin can eliminate a contender early or resolve the winner.
 
+## Launch pathway & agents
+
+- **Playbook:** [`launch/PLAYBOOK.md`](launch/PLAYBOOK.md) covers the route to real money in Great Britain (own Gambling Commission licence, free-to-play growth meanwhile, cash via open banking and debit cards, no crypto), phases and gates, vendors, and costs.
+- **Tracker:** [`launch/STATE.md`](launch/STATE.md) is the live tracker. Twelve Claude Code agents in `.claude/agents/` do the work.
+- **Running it:** run `/launch` from this folder for one cycle. The launch-director delegates, verifies, updates the tracker, and lists the decisions it needs from you. Agents draft; people sign, submit, pay and publish.
+
+### Real-money mode (locked)
+`MONEY_MODE=real` switches to a GBP wallet with:
+- identity + 18+ + GAMSTOP checks before any deposit or trade
+- deposit limits with a 24h cooling-off on increases
+- take-a-break and self-exclusion
+- affordability flags
+- a platform fee, an audit log, and a customer-funds report
+
+The server refuses to start in real mode without a licence number, operator name and non-sandbox providers. To try the whole flow locally:
+
+```bash
+MONEY_MODE=real ALLOW_SANDBOX_PROVIDERS=true OPERATOR_LEGAL_NAME="Test Ltd" LICENCE_NUMBER=TEST TAKER_FEE_BPS=200 \
+  HOUSE_MARKET_MAKER=true GENERAL_BETTING_LICENCE=TEST npm --prefix backend start
+```
+
 ## Design
 
 The UI follows the Game Knight pitch deck:

@@ -52,6 +52,14 @@ export const api = {
   revokeKey: id => request('DELETE', `/keys/${id}`),
 
   stats: () => request('GET', '/stats'),
+  config: () => request('GET', '/config'),
+  wallet: () => request('GET', '/wallet'),
+  deposit: (amount, method) => request('POST', '/wallet/deposits', { amount, method, idempotency_key: `dep_${Date.now()}_${Math.random().toString(36).slice(2)}` }),
+  withdraw: amount => request('POST', '/wallet/withdrawals', { amount }),
+  verifyIdentity: body => request('POST', '/kyc', body),
+  setLimits: limits => request('PUT', '/rg/limits', limits),
+  takeBreak: hours => request('POST', '/rg/break', { hours }),
+  selfExclude: months => request('POST', '/rg/self-exclude', { months }),
   tags: () => request('GET', '/tags'),
   follows: () => request('GET', '/me/follows'),
   follow: tag => request('POST', '/me/follows', { tag }),
@@ -85,6 +93,8 @@ export const api = {
     voidEvent: id => request('POST', `/admin/events/${id}/void`),
     syncFeed: () => request('POST', '/admin/feed/sync'),
     health: () => request('GET', '/admin/health'),
+    finance: () => request('GET', '/admin/finance'),
+    flags: () => request('GET', '/admin/audit?flags=1'),
   },
 }
 

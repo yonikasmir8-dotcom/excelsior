@@ -2,6 +2,7 @@ import React, { useState } from 'react'
 import { api } from './api.js'
 import { C, display, fmt } from './theme.js'
 import { Button, ErrorBox, GradientRule, Input, LOGO } from './ui.jsx'
+import { CONFIG, isReal } from './config.js'
 
 const PILLARS = [
   ['Simple Yes/No', 'Back an opinion in two taps. No betting-slip clutter.'],
@@ -52,9 +53,12 @@ export default function AuthPage({ onAuth }) {
           autoComplete={mode === 'register' ? 'new-password' : 'current-password'} placeholder={mode === 'register' ? 'Password (8+ characters)' : 'Password'} required />
         <ErrorBox>{error}</ErrorBox>
         <Button type="submit" kind="buy" disabled={busy} style={{ padding: '13px 16px', fontSize: 16 }}>
-          {busy ? '…' : mode === 'register' ? `Kick off with ${fmt.kc(100000)}` : 'Sign in'}
+          {busy ? '…' : mode === 'register' ? (isReal() ? 'Create account' : `Kick off with ${fmt.kc(CONFIG.starting_balance)}`) : 'Sign in'}
         </Button>
-        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>Knight Coins are play money with no cash value. Plus {fmt.kc(10000)} free every day.</div>
+        <div style={{ fontSize: 12, color: C.muted, lineHeight: 1.5 }}>
+          {isReal() ? <>18+ only. You'll verify your identity and age before your first deposit. <a href="https://www.begambleaware.org" target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>BeGambleAware.org</a></>
+            : <>Knight Coins are play money with no cash value. Plus {fmt.kc(CONFIG.daily_bonus)} free every day.</>}
+        </div>
       </form>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 1, background: C.line, border: `1px solid ${C.line}` }}>

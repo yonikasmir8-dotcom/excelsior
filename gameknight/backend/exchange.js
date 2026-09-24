@@ -217,6 +217,17 @@ function placeOrderTx(input, pending) {
   }
   db.prepare('UPDATE orders SET size = ?, filled = ?, status = ? WHERE id = ?').run(taker.size, taker.filled, status, orderId);
 
+  // Platform fee (the deck's "service fee per transaction"): charged to the taker on the cash
+  // that changed hands, paid into the internal platform account. Off unless TAKER_FEE_BPS is set.
+  const feeBps = Number(process.env.TAKER_FEE_BPS || 0);
+  const cashMoved = side === 'buy' ? paid : received;
+  const fee = feeBps > 0 && cashMoved > 0 && !user.is_house && !user.is_system ? Math.ceil((cashMoved * feeBps) / 10000) : 0;
+  if (fee) {
+    if (q.user.get(userId).balance < fee) throw new ApiError(400, 'Insufficient balance to cover the platform fee');
+    credit(userId, -fee, 'fee', orderId);
+    credit(feeAccount(), fee, 'fee', orderId);
+  }
+
   for (const uid of touched) autoMerge(uid, marketId);
 
   if (fills.length) {
@@ -233,7 +244,7 @@ function placeOrderTx(input, pending) {
     order_id: orderId, status, outcome, side, type, price, size: taker.size,
     filled, resting: status === 'open' ? size - filled : 0,
     avg_price: filled ? cash / filled : null, [side === 'buy' ? 'cost' : 'proceeds']: cash,
-    fills: fills.length, balance: q.user.get(userId).balance,
+    fills: fills.length, fee, balance: q.user.get(userId).balance,
   };
 }
 
@@ -274,6 +285,14 @@ function autoMerge(userId, marketId) {
   pos.realized += pairs * PAIR;
   q.savePos.run(pos);
   credit(userId, pairs * PAIR, 'merge', marketId);
+}
+
+// Internal account that collects platform fees (excluded from leaderboards).
+// Looked up every time: an id cached from inside a rolled-back dry run would dangle.
+function feeAccount() {
+  const row = db.prepare("SELECT id FROM users WHERE is_system = 1 AND username = 'platform'").get();
+  return row ? row.id : db.prepare(`INSERT INTO users (username, pass_hash, is_bot, is_system, created_at)
+    VALUES ('platform', 'x:disabled', 1, 1, ?)`).run(now()).lastInsertRowid;
 }
 
 // ── Cancelling ───────────────────────────────────────────────────────────────
@@ -355,5 +374,5 @@ function displayPrice(market, qt = quotes(market.id)) {
 
 module.exports = {
   bus, ApiError, now, setClock, credit, placeOrder, cancelOrder, cancelAll, resolveMarketTx, orderBook, quotes, displayPrice,
-  available, getPos, toBook, PAIR,
+  available, getPos, toBook, PAIR, feeAccount,
 };

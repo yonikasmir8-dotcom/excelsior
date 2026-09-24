@@ -1,6 +1,7 @@
 process.env.DB_PATH = ':memory:';
 process.env.SEED_DEMO = 'false';
 process.env.ADMIN_USERS = 'boss';
+process.env.AUTH_RATE_PER_MIN = '1000';
 delete process.env.FOOTBALL_DATA_TOKEN;
 
 const server = require('../server');
@@ -28,7 +29,7 @@ function newMatch(opts = {}) {
 // Every cent that entered the system is either cash, escrowed in an open buy order,
 // or backing an outstanding YES+NO pair (100¢ each).
 function assertConserved(assert) {
-  const inflow = db.prepare("SELECT COALESCE(SUM(delta), 0) AS v FROM ledger WHERE reason IN ('signup','bonus','house_float','house_topup')").get().v;
+  const inflow = db.prepare("SELECT COALESCE(SUM(delta), 0) AS v FROM ledger WHERE reason IN ('signup','bonus','house_float','house_topup','deposit','withdrawal','withdrawal_reversal')").get().v;
   const cash = db.prepare('SELECT SUM(balance) AS v FROM users').get().v;
   const escrow = db.prepare("SELECT COALESCE(SUM(price * (size - filled)), 0) AS v FROM orders WHERE status = 'open' AND side = 'buy'").get().v;
   const pairs = db.prepare("SELECT COALESCE(SUM(p.yes), 0) AS v FROM positions p JOIN markets m ON m.id = p.market_id WHERE m.status = 'open'").get().v;

@@ -19,6 +19,7 @@ db.exec(`
     is_admin INTEGER NOT NULL DEFAULT 0,
     is_bot INTEGER NOT NULL DEFAULT 0,
     is_house INTEGER NOT NULL DEFAULT 0,          -- the designated market maker
+    is_system INTEGER NOT NULL DEFAULT 0,         -- internal accounts (platform fees)
     bio TEXT NOT NULL DEFAULT '',
     last_bonus_at TEXT,
     created_at TEXT NOT NULL
@@ -149,6 +150,57 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_settlements_user ON settlements(user_id, id);
 
+  -- ── Real-money layer (inactive in play-money mode) ──────────────────────────
+  -- Cash in/out. Deposits credit the balance when the provider confirms; withdrawals
+  -- debit immediately and are reversed if the payout fails.
+  CREATE TABLE IF NOT EXISTS payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,                          -- deposit | withdrawal
+    amount INTEGER NOT NULL,                     -- pence
+    status TEXT NOT NULL,                        -- pending | completed | failed
+    provider TEXT NOT NULL,
+    provider_ref TEXT,
+    method TEXT,                                 -- open_banking | debit_card | …
+    idempotency_key TEXT UNIQUE,
+    failure_reason TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_payments_user ON payments(user_id, id);
+  -- Identity + age verification (must be complete before any deposit or trade)
+  CREATE TABLE IF NOT EXISTS kyc (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    status TEXT NOT NULL,                        -- pending | verified | rejected
+    provider TEXT NOT NULL,
+    provider_ref TEXT,
+    full_name TEXT,
+    dob TEXT,
+    country TEXT,
+    reason TEXT,
+    updated_at TEXT NOT NULL
+  );
+  -- Safer-gambling controls (limits in pence; NULL = no limit)
+  CREATE TABLE IF NOT EXISTS rg_settings (
+    user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    limit_day INTEGER, limit_week INTEGER, limit_month INTEGER,
+    pending_limits TEXT,                         -- JSON: increases wait 24h before taking effect
+    pending_effective_at TEXT,
+    timeout_until TEXT,                          -- "take a break"
+    excluded_until TEXT,                         -- self-exclusion
+    reality_check_min INTEGER NOT NULL DEFAULT 30,
+    updated_at TEXT NOT NULL
+  );
+  -- Append-only compliance trail
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    action TEXT NOT NULL,
+    detail TEXT,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_audit_user ON audit_log(user_id, id);
+
   -- "Tailored experience": teams, players, competitions and matches a user follows
   CREATE TABLE IF NOT EXISTS follows (
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -166,5 +218,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_comments_event ON comments(event_id, id);
   CREATE INDEX IF NOT EXISTS idx_ledger_user ON ledger(user_id, id);
 `);
+
+// Additive migrations for databases created by earlier versions
+for (const sql of [
+  'ALTER TABLE users ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0',
+]) { try { db.exec(sql); } catch { /* column already exists */ } }
 
 module.exports = db;

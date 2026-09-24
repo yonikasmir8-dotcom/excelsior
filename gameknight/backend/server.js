@@ -24,12 +24,15 @@ const ex = require('./exchange');
 const events = require('./events');
 const mm = require('./marketmaker');
 const feed = require('./feed');
+const money = require('./money');
 const { ApiError, now } = ex;
 
 const PORT = process.env.PORT || 4000;
 const ADMIN_USERS = (process.env.ADMIN_USERS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-const STARTING_BALANCE = 1000_00;
+// Play money: free starting coins + daily bonus. Real money: players fund their own wallets.
+const STARTING_BALANCE = () => (money.isReal() ? 0 : 1000_00);
 const DAILY_BONUS = 100_00;
+const AUTH_RATE = Number(process.env.AUTH_RATE_PER_MIN || 10);
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 function hashPassword(pw) {
@@ -53,7 +56,7 @@ function loadUser(req) {
   return token ? db.prepare('SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?').get(token) : undefined;
 }
 
-const canClaimBonus = u => !u.last_bonus_at || Date.now() - new Date(u.last_bonus_at) >= 864e5;
+const canClaimBonus = u => !money.isReal() && (!u.last_bonus_at || Date.now() - new Date(u.last_bonus_at) >= 864e5);
 
 // ── Valuation ─────────────────────────────────────────────────────────────────
 function priceMap(marketIds) {
@@ -165,7 +168,7 @@ function eventView(ev, { full = false } = {}) {
     volume: markets.reduce((s, m) => s + m.volume, 0), volume_24h: vol24, liquidity,
     comments: db.prepare('SELECT COUNT(*) AS n FROM comments WHERE event_id = ?').get(ev.id).n,
     players: ids.length ? db.prepare(`SELECT COUNT(DISTINCT u) AS n FROM (SELECT taker_id AS u FROM trades WHERE market_id IN (${ph})
-      UNION SELECT maker_id FROM trades WHERE market_id IN (${ph})) WHERE u NOT IN (SELECT id FROM users WHERE is_house = 1)`).get(...ids, ...ids).n : 0,
+      UNION SELECT maker_id FROM trades WHERE market_id IN (${ph})) WHERE u NOT IN (SELECT id FROM users WHERE is_house = 1 OR is_system = 1)`).get(...ids, ...ids).n : 0,
     markets,
   };
   if (full) view.description = ev.description;
@@ -225,7 +228,7 @@ function issueSession(userId) {
   return token;
 }
 
-app.post('/api/auth/register', rateLimit('auth', 10), wrap(req => {
+app.post('/api/auth/register', rateLimit('auth', AUTH_RATE), wrap(req => {
   const { username = '', password = '' } = req.body || {};
   if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) throw new ApiError(400, 'Username must be 3–20 letters, numbers or underscores');
   if (typeof password !== 'string' || password.length < 8) throw new ApiError(400, 'Password must be at least 8 characters');
@@ -234,14 +237,15 @@ app.post('/api/auth/register', rateLimit('auth', 10), wrap(req => {
   const isAdmin = ADMIN_USERS.length ? ADMIN_USERS.includes(username.toLowerCase()) : humans === 0;
   const id = db.transaction(() => {
     const { lastInsertRowid } = db.prepare('INSERT INTO users (username, pass_hash, granted, is_admin, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(username, hashPassword(password), STARTING_BALANCE, isAdmin ? 1 : 0, now());
-    ex.credit(lastInsertRowid, STARTING_BALANCE, 'signup', null);
+      .run(username, hashPassword(password), STARTING_BALANCE(), isAdmin ? 1 : 0, now());
+    ex.credit(lastInsertRowid, STARTING_BALANCE(), 'signup', null);
+    money.audit(lastInsertRowid, 'account.created', { ip: req.ip, mode: money.cfg().mode });
     return lastInsertRowid;
   })();
   return { token: issueSession(id), user: publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(id)) };
 }));
 
-app.post('/api/auth/login', rateLimit('auth', 10), wrap(req => {
+app.post('/api/auth/login', rateLimit('auth', AUTH_RATE), wrap(req => {
   const { username = '', password = '' } = req.body || {};
   const u = db.prepare('SELECT * FROM users WHERE username = ?').get(String(username));
   if (!u || u.is_bot || !verifyPassword(String(password), u.pass_hash)) throw new ApiError(401, 'Wrong username or password');
@@ -253,9 +257,10 @@ app.post('/api/auth/logout', requireAuth, wrap(req => {
   return { ok: true };
 }));
 
-app.get('/api/me', requireAuth, wrap(req => publicUser(req.user)));
+app.get('/api/me', requireAuth, wrap(req => ({ ...publicUser(req.user), mode: money.cfg().mode, gambling_block: money.gamblingBlock(req.user) })));
 
 app.post('/api/me/bonus', requireAuth, wrap(req => {
+  if (money.isReal()) throw new ApiError(400, 'Bonuses are not available on real-money accounts');
   if (!canClaimBonus(req.user)) throw new ApiError(400, 'Daily bonus already claimed — come back tomorrow');
   db.transaction(() => {
     ex.credit(req.user.id, DAILY_BONUS, 'bonus', null);
@@ -371,6 +376,32 @@ app.get('/api/markets/:id/holders', wrap(req => {
     WHERE p.market_id = ? AND p.${col} > 0 AND u.is_house = 0 ORDER BY p.${col} DESC LIMIT 10`).all(req.params.id);
   return { yes: top('yes'), no: top('no') };
 }));
+
+// ── Money: config, wallet, identity, safer gambling ─────────────────────────
+app.get('/api/config', wrap(() => {
+  const c = money.cfg();
+  return {
+    mode: c.mode, currency: c.currency, symbol: c.symbol, fee_bps: c.feeBps, starting_balance: STARTING_BALANCE(), daily_bonus: money.isReal() ? 0 : DAILY_BONUS,
+    min_deposit: c.minDeposit, max_deposit: c.maxDeposit, min_withdrawal: c.minWithdrawal, operator: c.operator, licence: c.licence,
+  };
+}));
+
+app.get('/api/wallet', requireAuth, wrap(req => money.walletView(req.user)));
+app.post('/api/wallet/deposits', requireAuth, geoGate, rateLimit('deposit', 10), wrap(req => money.deposit(req.user, req.body || {})));
+app.post('/api/wallet/withdrawals', requireAuth, rateLimit('withdraw', 10), wrap(req => money.withdraw(req.user, req.body || {})));
+app.post('/api/kyc', requireAuth, geoGate, rateLimit('kyc', 5), wrap(req => money.verifyIdentity(req.user, req.body || {})));
+app.put('/api/rg/limits', requireAuth, wrap(req => money.setLimits(req.user.id, req.body || {})));
+app.post('/api/rg/break', requireAuth, wrap(req => money.takeBreak(req.user.id, req.body?.hours)));
+app.post('/api/rg/self-exclude', requireAuth, wrap(req => money.selfExclude(req.user.id, req.body?.months)));
+app.post('/api/payments/webhook/:provider', wrap(req => {
+  const p = money.provider('payments');
+  if (p.name !== req.params.provider) throw new ApiError(404, 'Unknown provider');
+  const evt = p.verifyWebhook(req);
+  return money.settlePayment(evt.ref, evt.status, evt.reason);
+}));
+app.get('/api/admin/finance', requireAdmin, wrap(() => ({ ...money.fundsReport(), launch: (() => { try { return money.assertLaunchReady(); } catch (e) { return { ok: false, missing: e.missing } } })() })));
+app.get('/api/admin/audit', requireAdmin, wrap(req => db.prepare(`SELECT a.*, u.username FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+  ${req.query.flags ? "WHERE a.action LIKE 'flag.%'" : ''} ORDER BY a.id DESC LIMIT 200`).all()));
 
 // ── Tailored experience: follows + tags ─────────────────────────────────────
 function matchesTag(ev, tag) {
@@ -555,7 +586,25 @@ function orderInput(req, dryRun) {
 }
 
 app.post('/api/orders/preview', requireAuth, rateLimit('preview', 240), wrap(req => ex.placeOrder(orderInput(req, true))));
-app.post('/api/orders', requireAuth, rateLimit('order', 120), wrap(req => ex.placeOrder(orderInput(req, false))));
+// Real money: identity verified, not excluded / on a break, and (optionally) inside an allowed country
+function canGamble(req, res, next) {
+  const block = money.gamblingBlock(req.user);
+  if (block) return res.status(403).json({ error: block, code: 'gambling_blocked' });
+  next();
+}
+function geoGate(req, res, next) {
+  const c = money.cfg();
+  if (!money.isReal() || !c.geoEnforce) return next();
+  const country = String(req.headers['cf-ipcountry'] || req.headers['x-country'] || '').toUpperCase();
+  if (!c.allowedCountries.includes(country)) return res.status(451).json({ error: 'Game Knight is not available in your location', code: 'geo_blocked' });
+  next();
+}
+
+app.post('/api/orders', requireAuth, geoGate, canGamble, rateLimit('order', 120), wrap(req => {
+  const r = ex.placeOrder(orderInput(req, false));
+  if (money.isReal()) money.audit(req.user.id, 'trade', { order_id: r.order_id, market_id: req.body?.market_id, side: r.side, outcome: r.outcome, filled: r.filled, fee: r.fee });
+  return r;
+}));
 
 app.get('/api/orders', requireAuth, wrap(req => db.prepare(`SELECT o.*, m.label, m.question, e.title AS event_title, e.slug
   FROM orders o JOIN markets m ON m.id = o.market_id JOIN events e ON e.id = m.event_id
@@ -604,7 +653,7 @@ app.get('/api/users/:username', wrap(req => {
 app.get('/api/leaderboard', wrap(req => {
   const by = req.query.by === 'volume' ? 'volume' : 'profit';
   const since = req.query.period === 'week' ? new Date(Date.now() - 7 * 864e5).toISOString() : '';
-  const users = db.prepare('SELECT * FROM users WHERE is_house = 0').all();
+  const users = db.prepare('SELECT * FROM users WHERE is_house = 0 AND is_system = 0').all();
   return users.map(u => {
     const { profit, portfolio } = accountValue(u);
     return { username: u.username, is_bot: !!u.is_bot, profit, portfolio, volume: userVolume(u.id, since) };
@@ -706,10 +755,16 @@ app.use((err, req, res, next) => {
 const dist = path.join(__dirname, '..', 'frontend', 'dist');
 if (fs.existsSync(dist)) app.use(express.static(dist));
 
-if (process.env.SEED_DEMO !== 'false' && !process.env.FOOTBALL_DATA_TOKEN && db.prepare('SELECT COUNT(*) AS n FROM events').get().n === 0) {
+// Real money stays locked until licensing and providers are configured
+try { money.assertLaunchReady(); } catch (e) {
+  if (require.main === module) { console.error(`\n${e.message}\n\nSet MONEY_MODE=play to run the play-money platform.\n`); process.exit(1); }
+  throw e;
+}
+if (!money.isReal() && process.env.SEED_DEMO !== 'false' && !process.env.FOOTBALL_DATA_TOKEN && db.prepare('SELECT COUNT(*) AS n FROM events').get().n === 0) {
   require('./seed')({ hashPassword });
 }
-mm.start(hashPassword);
+// In real money the house only makes markets if the operator holds a general betting licence
+if (!money.isReal() || process.env.HOUSE_MARKET_MAKER === 'true') mm.start(hashPassword);
 feed.start();
 setInterval(() => { if (events.closeExpired()) mm.requoteAll(); }, 30e3).unref();
 

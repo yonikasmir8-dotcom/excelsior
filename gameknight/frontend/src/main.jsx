@@ -2,6 +2,7 @@ import React from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 import { STANDALONE } from './api.js'
+import { loadConfig } from './config.js'
 
 async function main() {
   if (STANDALONE) {
@@ -12,6 +13,7 @@ async function main() {
       throw e
     }
   }
+  await loadConfig()
   createRoot(document.getElementById('root')).render(<App />)
 }
 main()

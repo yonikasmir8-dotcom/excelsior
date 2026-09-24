@@ -5,6 +5,7 @@ import { Button, Card, Crest, Empty, ErrorBox, Icon, InsightsBar, Pill, Segmente
 import { InsightsSheet, questionFor, rowsFor } from './opinion.jsx'
 import { MarketCard, ProbBar } from './cards.jsx'
 import { Countdown, Flash, LiveDot, Skeleton, toast } from './fx.jsx'
+import { CONFIG, isReal } from './config.js'
 import PriceChart from './PriceChart.jsx'
 import OrderBook from './OrderBook.jsx'
 import TradeWidget from './TradeWidget.jsx'
@@ -305,9 +306,14 @@ function UnitsTicket({ market, outcome, user, holdings, label, canOppose, onOppo
         <Button kind="buy" onClick={buy} disabled={busy || !n || (user && !preview)} style={{ padding: '10px 20px', fontSize: 17, borderRadius: 0 }}>{busy ? '…' : 'Buy'}</Button>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 13, color: C.muted, flexWrap: 'wrap', ...num }}>
-        <span>{preview ? <>Cost <strong style={{ color: C.text }}>{fmt.kc(preview.cost)}</strong> · avg {fmt.cents(preview.avg_price)} · profit if right <strong style={{ color: C.yesText }}>{fmt.signed(preview.filled * 100 - preview.cost)}</strong></> : user ? ' ' : <a href="#/login" style={{ color: C.accent, fontWeight: 700 }}>Sign up free for {fmt.kc(100000)} to play</a>}</span>
+        <span>{preview ? <>Cost <strong style={{ color: C.text }}>{fmt.kc(preview.cost + (preview.fee || 0))}</strong>{preview.fee ? <> incl. {fmt.kc(preview.fee)} fee</> : null} · avg {fmt.cents(preview.avg_price)} · profit if right <strong style={{ color: C.yesText }}>{fmt.signed(preview.filled * 100 - preview.cost - (preview.fee || 0))}</strong></> : user ? ' ' : <a href="#/login" style={{ color: C.accent, fontWeight: 700 }}>{isReal() ? 'Sign in to play' : `Sign up free for ${fmt.kc(CONFIG.starting_balance)} to play`}</a>}</span>
         {user && <span>You have {fmt.kc(user.balance)}</span>}
       </div>
+      {isReal() && user && (user.gambling_block || user.balance < 100) && (
+        <a href="#/wallet" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, border: `1px solid ${C.accent}`, padding: '9px 12px', fontSize: 14 }}>
+          <span>{user.gambling_block || 'Add funds to back this opinion'}</span><strong style={{ color: C.accent, whiteSpace: 'nowrap' }}>{user.gambling_block?.startsWith('Verify') ? 'Verify now' : user.gambling_block ? 'Wallet' : 'Deposit'} →</strong>
+        </a>
+      )}
       {!fillsAll && <div style={{ fontSize: 13, color: '#eda100' }}>Only {preview.filled} units available at the moment. Your order fills what it can.</div>}
       {held > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 14, border: `1px solid ${C.line}`, padding: '8px 10px' }}>

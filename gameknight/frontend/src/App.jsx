@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { api, getToken, setToken, STANDALONE } from './api.js'
 import { C, FONT, clubStyle, display, fmt, num, useIsMobile, useLive } from './theme.js'
-import { Crest, Icon, LOGO, notify } from './ui.jsx'
+import { Crest, Icon, LOGO, confirmDialog, notify } from './ui.jsx'
 import { Toaster } from './fx.jsx'
 import { loadFollows } from './opinion.jsx'
 import AuthPage from './AuthPage.jsx'
@@ -15,6 +15,8 @@ import ProfilePage from './ProfilePage.jsx'
 import SettingsPage from './SettingsPage.jsx'
 import DocsPage from './DocsPage.jsx'
 import AdminPage from './AdminPage.jsx'
+import WalletPage from './WalletPage.jsx'
+import { CONFIG, isReal } from './config.js'
 
 // Hash routes: #/  #/event/:slug?g=&m=&o=  #/calendar  #/news  #/opinions  #/profile  #/u/:name
 //              #/leaderboard  #/settings  #/docs  #/admin  #/login
@@ -54,11 +56,23 @@ export default function App() {
   useEffect(() => { refreshUser().finally(() => setBooting(false)) }, [refreshUser])
   useLive(m => m.type === 'trade' || m.type === 'event', refreshUser, [])
 
+  // Reality check: remind real-money players how long they've been playing
+  useEffect(() => {
+    if (!isReal() || !user) return
+    const started = Date.now()
+    const t = setInterval(() => {
+      const mins = Math.round((Date.now() - started) / 60e3)
+      confirmDialog(`Reality check: you've been on Game Knight for ${mins} minutes. Your balance is ${fmt.kc(user.balance)}.`, 'Keep playing')
+        .then(keep => { if (!keep) window.location.hash = '/wallet' })
+    }, 30 * 60e3)
+    return () => clearInterval(t)
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const onAuth = ({ token }) => { setToken(token); refreshUser(); loadFollows(); window.location.hash = '/' }
   const logout = async () => { try { await api.logout() } catch {} setToken(null); setUser(null); loadFollows(); window.location.hash = '/' }
   const claimBonus = async () => { try { await api.claimBonus(); refreshUser(); notify(`${fmt.kc(10000)} daily bonus added. Come back tomorrow for more.`) } catch (e) { notify(e.message) } }
 
-  const needsAuth = ['opinions', 'admin', 'settings', 'profile'].includes(route.page) && !user && !booting
+  const needsAuth = ['opinions', 'admin', 'settings', 'profile', 'wallet'].includes(route.page) && !user && !booting
   const active = n => route.page === n.page || (n.page === 'home' && route.page === 'event')
 
   let content = null
@@ -68,6 +82,7 @@ export default function App() {
   else if (route.page === 'calendar') content = <CalendarPage />
   else if (route.page === 'news') content = <NewsPage />
   else if (route.page === 'opinions') content = <PortfolioPage user={user} onChange={refreshUser} onBonus={claimBonus} />
+  else if (route.page === 'wallet') content = <WalletPage user={user} onChange={refreshUser} onBonus={claimBonus} />
   else if (route.page === 'leaderboard') content = <LeaderboardPage me={user} />
   else if (route.page === 'profile') content = <ProfilePage key="me" username={user.username} me={user} onLogout={logout} onBonus={claimBonus} />
   else if (route.page === 'u') content = <ProfilePage key={route.id} username={route.id} me={user} onLogout={logout} onBonus={claimBonus} />
@@ -87,7 +102,7 @@ export default function App() {
       </button>
       {menu && user && (
         <div style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', top: 42, background: C.surface, border: `1px solid ${C.lineLight}`, padding: 6, minWidth: 210, zIndex: 40, boxShadow: '0 12px 30px #000' }}>
-          {[['#/profile', 'Profile'], ['#/opinions', 'My opinions'], ['#/leaderboard', 'Leaderboard'], ['#/settings', STANDALONE ? 'Settings' : 'Settings & API keys'],
+          {[['#/profile', 'Profile'], ['#/wallet', isReal() ? 'Wallet & safer gambling' : 'Wallet'], ['#/opinions', 'My opinions'], ['#/leaderboard', 'Leaderboard'], ['#/settings', STANDALONE ? 'Settings' : 'Settings & API keys'],
             ...(!STANDALONE ? [['#/docs', 'API docs']] : []), ...(user.is_admin ? [['#/admin', 'Admin']] : [])].map(([h, t]) => (
             <a key={h} href={h} style={{ display: 'block', padding: '9px 10px', fontSize: 15 }}>{t}</a>
           ))}
@@ -99,7 +114,7 @@ export default function App() {
   )
 
   const balance = user && (
-    <a href="#/opinions" title="Your Knight Coins" style={{ border: `1px solid ${C.line}`, padding: '5px 8px', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', ...num }}>
+    <a href="#/wallet" title={isReal() ? 'Your wallet' : 'Your Knight Coins'} style={{ border: `1px solid ${C.line}`, padding: '5px 8px', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap', ...num }}>
       {fmt.kcShort(user.balance)}
     </a>
   )
@@ -137,8 +152,15 @@ export default function App() {
       <footer style={{ maxWidth: 1280, margin: '0 auto', padding: mobile ? '0 16px 104px' : '0 16px 32px', color: C.muted, fontSize: 12, lineHeight: 1.6 }}>
         <div style={{ borderTop: `1px solid ${C.line}`, paddingTop: 14 }}>
           {STANDALONE && <strong style={{ color: C.accent }}>On-device demo: everything runs and is saved on this phone. </strong>}
-          Game Knight uses Knight Coins ({fmt.kc(100)} each), a play-money currency with no cash value.
-          Coins can't be bought, sold or withdrawn, and no real-money wagering takes place.
+          {isReal() ? (
+            <>
+              <strong style={{ color: C.text2 }}>18+ only.</strong> Please gamble responsibly. <a href="https://www.begambleaware.org" target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>BeGambleAware.org</a> ·{' '}
+              <a href="https://www.gamstop.co.uk" target="_blank" rel="noreferrer" style={{ textDecoration: 'underline' }}>GAMSTOP</a> · <a href="#/wallet" style={{ textDecoration: 'underline' }}>Safer gambling tools</a>.{' '}
+              {CONFIG.operator} is licensed and regulated in Great Britain by the Gambling Commission under account number {CONFIG.licence}.
+            </>
+          ) : (
+            <>Game Knight uses Knight Coins ({fmt.kc(100)} each), a play-money currency with no cash value. Coins can't be bought, sold or withdrawn, and no real-money wagering takes place.</>
+          )}
         </div>
       </footer>
 

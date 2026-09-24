@@ -36,7 +36,9 @@ export const display = { fontFamily: FONT, fontWeight: 700, letterSpacing: '-0.0
 export const num = { fontVariantNumeric: 'tabular-nums' }
 
 // Knight Coins: 100 units of price = ₭1.00. Play money, no cash value.
-export const CUR = '₭'
+// Currency symbol comes from the server (/api/config): ₭ for play money, £ for real money
+export let CUR = '₭'
+export const setCurrency = sym => { CUR = sym }
 const n2 = { minimumFractionDigits: 2, maximumFractionDigits: 2 }
 export const fmt = {
   kc: cents => `${cents < 0 ? '−' : ''}${CUR}${(Math.abs(cents) / 100).toLocaleString('en-GB', n2)}`,

@@ -49,6 +49,7 @@ export default function ProfilePage({ username, me, onLogout, onBonus }) {
       {isMe && (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 8 }}>
+            <a href="#/wallet" style={{ gridColumn: '1 / -1' }}><Button style={{ width: '100%' }}>Wallet{STANDALONE ? '' : ' & safer gambling'}</Button></a>
             <a href="#/leaderboard"><Button kind="ghost" style={{ width: '100%' }}>Leaderboard</Button></a>
             <a href="#/settings"><Button kind="ghost" style={{ width: '100%' }}>{STANDALONE ? 'Settings' : 'Settings & API'}</Button></a>
             {me.can_claim_bonus && <Button onClick={onBonus} style={{ gridColumn: '1 / -1' }}>Claim daily {fmt.kc(10000)}</Button>}
