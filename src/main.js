@@ -22,7 +22,8 @@ import { updateCompanion } from './game/ai.js';
 import { initPlayer, updatePlayer, updateCamera, resetCamera, Cam } from './game/player.js';
 import { initProgress, grantXp, updatePickups } from './game/progress.js';
 import { rollItem, randomLegendary } from './game/loot.js';
-import { newSave, saveGame, loadGame, slotInfo, deleteSave, loadSettings, saveSettings } from './game/save.js';
+import { newSave, saveGame, loadGame, slotInfo, deleteSave } from './game/save.js';
+import { loadSettings, saveSettings, applySettings, detectQuality, ACTION_LABELS, DEFAULT_KEYS, keyName } from './core/settings.js';
 import { revealTrait, fullName, TRAITS, RANKS, ensureWarband } from './game/nemesis.js';
 import { genTavern } from './world/gen.js';
 import { VoxelModel } from './entities/model.js';
@@ -117,7 +118,7 @@ const API = {
   version: __APP_VERSION__,
   // UI-facing
   grantXp: (n) => grantXp(n),
-  slotInfo, deleteSave, saveSettings,
+  slotInfo, deleteSave, saveSettings, applySettings, actionLabels: ACTION_LABELS, defaultKeys: DEFAULT_KEYS, keyName,
   skillBonus: (skill) => { let b = 0; for (const h of G.party) b = Math.max(b, (h.cls.skill[skill] || 0)); return b + Math.floor(G.save.party.level / 4); },
   reloadTavern: () => { const p = activeHero()?.pos.clone(); loadLocation('tavern'); if (p) G.party.forEach((h, i) => h.pos.copy(p).add(new THREE.Vector3(i * 0.8, 0.2, 0))); resetCamera(); },
   randomLegendary: () => randomLegendary(G.save.party.level, G.save.active.map((id) => G.save.members.find((m) => m.id === id).classId)),
@@ -187,7 +188,8 @@ addEventListener('keydown', (e) => {
   if (G.mode !== 'play') { if (e.code === 'Escape') UI.closeModal(); return; }
   if (e.code === 'Escape') { if (UI.blocking()) UI.closeModal(); else UI.pause(); return; }
   if (UI.blocking() || G.inBreak) return;
-  if (e.code === 'KeyI') UI.openInventory(); if (e.code === 'KeyK') UI.openTalents(); if (e.code === 'KeyJ') UI.openJournal(); if (e.code === 'KeyP') UI.openParty();
+  const K = G.settings.keys;
+  if (e.code === K.inventory) UI.openInventory(); if (e.code === K.talents) UI.openTalents(); if (e.code === K.journal) UI.openJournal(); if (e.code === K.party) UI.openParty();
 });
 // release the tavern stage lights once play begins
 on('locationLoaded', () => { if (G.titleLights) { G.titleLights.forEach((l) => G.scene.remove(l)); G.titleLights = null; } });
@@ -200,7 +202,7 @@ function ambience(dt) {
   if (G.roof && G.inside && h) { const i = G.inside; const inside = h.pos.x > i.x0 && h.pos.x < i.x1 + 1 && h.pos.z > i.z0 && h.pos.z < i.z1 + 1; G.roof.material.opacity = THREE.MathUtils.lerp(G.roof.material.opacity ?? 1, inside ? 0 : 1, Math.min(1, dt * 6)); G.roof.material.transparent = true; G.roof.visible = G.roof.material.opacity > 0.02; }
   for (const l of G.scene.children) if (l.isPointLight && l.userData.flicker) l.intensity = l.userData.base * (0.85 + Math.sin(G.realTime * 11 + l.id) * 0.06 + Math.random() * 0.09);
   if (G.realm?.storm && G.hemi) {
-    stormT -= dt; if (stormT <= 0) { stormT = 5 + Math.random() * 9; G.stormFlash = 1; setTimeout(() => Audio.play('thunder'), 300 + Math.random() * 900); }
+    stormT -= dt; if (stormT <= 0) { stormT = 5 + Math.random() * 9; G.stormFlash = G.settings.reduceFlashing ? 0.15 : 1; setTimeout(() => Audio.play('thunder'), 300 + Math.random() * 900); }
     G.stormFlash = Math.max(0, (G.stormFlash || 0) - dt * 3); G.hemi.intensity = (REALMS[G.location]?.hemi ?? 1.1) + G.stormFlash * (Math.random() < 0.5 ? 2.5 : 1);
   }
 }
@@ -246,13 +248,44 @@ function frame(now) {
   }
   updatePopupsFrame(dtReal);
   post.render(G.scene, G.camera, dtReal);
+  perfTick(now);
   Input.endFrame();
 }
 
 titleBackdrop();
 try { makePortraits(); } catch (e) { console.warn('portraits failed', e); }
-UI.title();
+applySettings();
 requestAnimationFrame(frame);
+boot();
+
+// ── performance: FPS overlay (avg, 1% low, worst frame) + first-launch quality detection + low-FPS advice ──
+const fpsEl = document.createElement('div'); fpsEl.id = 'fps'; fpsEl.hidden = !G.settings.fps; document.body.append(fpsEl);
+const frameTimes = []; let lastPerf = 0, perfLabelT = 0, lowFpsT = 0, lowFpsWarned = false;
+function perfTick(now) {
+  if (lastPerf) { frameTimes.push(now - lastPerf); if (frameTimes.length > 600) frameTimes.shift(); }
+  lastPerf = now;
+  perfLabelT += 1;
+  if (perfLabelT % 20 === 0 && frameTimes.length > 30) {
+    const sorted = frameTimes.slice().sort((a, b) => b - a); const avg = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+    const low1 = sorted.slice(0, Math.max(1, Math.floor(sorted.length / 100))).reduce((a, b) => a + b, 0) / Math.max(1, Math.floor(sorted.length / 100));
+    G.perf = { fps: 1000 / avg, low1: 1000 / low1, worst: sorted[0] };
+    if (!fpsEl.hidden) fpsEl.textContent = `${G.perf.fps.toFixed(0)} fps  ·  1% low ${G.perf.low1.toFixed(0)}  ·  worst ${sorted[0].toFixed(1)} ms\n${(G.settings.quality || '').toUpperCase()}`;
+    if (G.mode === 'play' && !G.paused && G.perf.fps < 40 && G.settings.quality !== 'low') { lowFpsT += 20; if (lowFpsT > 900 && !lowFpsWarned) { lowFpsWarned = true; UI.toast('The game is running below 40 fps. You can lower Graphics Quality in Settings → Graphics.', 8000); } } else lowFpsT = 0;
+  }
+}
+async function boot() {
+  if (!G.settings.quality) {
+    // first launch: sample the title scene for up to 40 frames or 2 seconds (whichever first), in the background
+    G.settings.quality = 'medium'; applySettings();
+    const t = []; const start = performance.now();
+    new Promise((res) => { let p = performance.now(); const f = (n) => { t.push(n - p); p = n; if (t.length < 40 && n - start < 2000) requestAnimationFrame(f); else res(); }; requestAnimationFrame(f); }).then(() => {
+      const s = t.slice(Math.min(5, t.length - 1)).sort((a, b) => a - b); const ms = s[Math.floor(s.length / 2)] || 50;
+      const d = detectQuality(ms); G.settings.quality = d.quality; G.settings.gpu = d.gpu; saveSettings(); applySettings();
+    });
+  }
+  if (!G.settings.seenNotice) UI.notice(() => { G.settings.seenNotice = true; saveSettings(); UI.title(); });
+  else UI.title();
+}
 window.__G = G; window.__API = API; window.__UI = UI; // debug handles
 import * as _ai from './game/ai.js'; import * as _fx from './game/effects.js'; import * as _cb from './game/combat.js'; import * as _rl from './game/realms.js'; import * as _bs from './game/bosses.js';
 window.__M = { ai: _ai, fx: _fx, combat: _cb, realms: _rl, bosses: _bs };

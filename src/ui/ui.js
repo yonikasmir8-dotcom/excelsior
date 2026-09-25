@@ -123,15 +123,69 @@ export const UI = {
     render();
     UI.openModal(box);
   },
-  settings() {
-    const S = G.settings;
-    const row = (label, input) => h('div', { style: 'display:flex;align-items:center;gap:12px;margin:8px 0' }, h('div', { class: 'title-font', style: 'width:180px;font-size:20px' }, label), input);
-    const range = (k, min, max, step) => h('input', { type: 'range', min, max, step, value: S[k], oninput: (e) => { S[k] = +e.target.value; Audio.applyVolume(); UI.api.saveSettings(); } });
-    UI.openModal(h('div', {}, h('h2', {}, 'Settings'),
-      row('Sound FX', range('volume', 0, 1, 0.05)), row('Music', range('music', 0, 1, 0.05)), row('Mouse sensitivity', range('sens', 0.3, 2.5, 0.05)),
-      row('Difficulty', h('select', { id: 'diffSel', style: 'font-family:var(--display);font-size:18px;padding:4px', onchange: (e) => { S.difficulty = e.target.value; UI.api.saveSettings(); } }, ['story', 'normal', 'hard'].map((d) => h('option', { value: d, selected: S.difficulty === d ? '' : null }, { story: 'Story (relaxed)', normal: 'Normal', hard: 'Hard (brutal)' }[d])))),
-      row('Comic ink shader', h('input', { type: 'checkbox', checked: S.postfx ? '' : null, onchange: (e) => { S.postfx = e.target.checked; UI.api.saveSettings(); } })),
-      h('p', { class: 'muted' }, 'Turn off the comic shader if the game runs slowly.')));
+  notice(done) {
+    const el = h('div', { class: 'modal' }, h('div', { class: 'sheet panel notice' },
+      h('h2', {}, 'Photosensitivity Warning'),
+      h('p', {}, 'This game contains flashing lights, lightning and bright magical effects that may trigger seizures in people with photosensitive epilepsy. If you or anyone in your family has an epileptic condition, consult a doctor before playing.'),
+      h('p', {}, 'You can reduce flashing effects and screen shake at any time in Settings → Accessibility.'),
+      h('div', { style: 'display:flex;gap:10px;justify-content:center;margin-top:14px' },
+        h('button', { class: 'btn alt', onclick: () => { G.settings.reduceFlashing = true; G.settings.shake = 0.3; UI.api.saveSettings(); UI.api.applySettings(); el.remove(); done(); } }, 'Reduce flashing & shake'),
+        h('button', { class: 'btn', onclick: () => { el.remove(); done(); } }, 'Continue'))));
+    document.body.append(el);
+  },
+  settings(tab = 'gameplay') {
+    const S = G.settings; const body = h('div', {});
+    const save = () => { UI.api.saveSettings(); UI.api.applySettings(); Audio.applyVolume(); };
+    const row = (label, input, hint) => h('div', { class: 'setrow' }, h('div', { class: 'l' }, label), input, hint ? h('span', { class: 'muted', style: 'font-size:15px' }, hint) : null);
+    const range = (k, min, max, step, fmt = (v) => v) => { const out = h('span', { class: 'muted', style: 'width:60px' }, fmt(S[k])); const r = h('input', { type: 'range', id: 'set-' + k, min, max, step, value: S[k], oninput: (e) => { S[k] = +e.target.value; out.textContent = fmt(S[k]); save(); } }); return h('span', { style: 'display:flex;gap:10px;align-items:center' }, r, out); };
+    const check = (k) => h('input', { type: 'checkbox', id: 'set-' + k, checked: S[k] ? '' : null, onchange: (e) => { S[k] = e.target.checked; save(); } });
+    const select = (k, opts, after) => h('select', { id: 'set-' + k, onchange: (e) => { S[k] = e.target.value; save(); after && after(); } }, Object.entries(opts).map(([v, l]) => h('option', { value: v, selected: S[k] === v ? '' : null }, l)));
+    const pct = (v) => Math.round(v * 100) + '%';
+    const render = () => {
+      body.innerHTML = '';
+      body.append(h('h2', {}, 'Settings'), h('div', { class: 'tabs' }, ['gameplay', 'graphics', 'audio', 'controls', 'accessibility'].map((t) => h('button', { class: 'btn alt' + (t === tab ? ' on' : ''), onclick: () => { tab = t; render(); } }, t))));
+      if (tab === 'gameplay') body.append(
+        row('Difficulty', select('difficulty', { story: 'Story — relaxed', normal: 'Normal', hard: 'Hard — punishing' }), 'Applies to newly spawned enemies'),
+        row('Enemy damage', range('enemyDamage', 0.4, 1.6, 0.05, pct)), row('Enemy health', range('enemyHealth', 0.4, 1.6, 0.05, pct)),
+        row('Timing windows', range('timing', 1, 2, 0.05, pct), 'Longer enemy wind-ups, telegraphs and parry window'),
+        row('Hold actions become toggles', check('toggleHold'), 'Guard, Aimed Shot and revive'));
+      if (tab === 'graphics') body.append(
+        row('Quality preset', select('quality', { low: 'Low', medium: 'Medium', high: 'High', ultra: 'Ultra' }, () => UI.toast('Scenery density changes apply when you next enter a location.')), S.gpu ? `Detected: ${S.gpu}` : ''),
+        row('Field of view', range('fov', 50, 90, 1, (v) => v + '°')),
+        row('Post-processing', check('postfx'), 'Bloom and colour grading'),
+        row('Show FPS counter', check('fps')));
+      if (tab === 'audio') body.append(row('Sound effects', range('volume', 0, 1, 0.05, pct)), row('Music', range('music', 0, 1, 0.05, pct)));
+      if (tab === 'controls') {
+        body.append(row('Mouse sensitivity', range('sens', 0.3, 2.5, 0.05, (v) => v.toFixed(2))), row('Invert vertical look', check('invertY')), h('h3', {}, 'Key bindings'), h('p', { class: 'muted', style: 'margin-top:0' }, 'Click a binding, then press a key or mouse button. Esc cancels.'));
+        const grid = h('div', { style: 'columns:2;column-gap:28px' });
+        for (const [act, label] of Object.entries(UI.api.actionLabels)) {
+          const b = h('button', { class: 'bindbtn', id: 'bind-' + act, onclick: () => listen(act, b) }, UI.api.keyName(S.keys[act]));
+          grid.append(h('div', { class: 'setrow', style: 'break-inside:avoid;margin:4px 0' }, h('div', { class: 'l', style: 'width:170px' }, label), b));
+        }
+        body.append(grid, h('div', { style: 'margin-top:10px' }, h('button', { class: 'btn alt', onclick: () => { S.keys = { ...UI.api.defaultKeys }; save(); render(); } }, 'Reset to defaults')));
+      }
+      if (tab === 'accessibility') body.append(
+        row('UI scale', range('uiScale', 0.8, 1.5, 0.05, pct)), row('Text size', range('textScale', 0.9, 1.5, 0.05, pct)),
+        row('High-contrast interface', check('highContrast')),
+        row('Reduce flashing', check('reduceFlashing'), 'Disables storm and impact flashes'),
+        row('Screen shake', range('shake', 0, 1, 0.05, pct)),
+        row('Colour-blind telegraphs', select('colorblind', { none: 'Off', protan: 'Protanopia', deutan: 'Deuteranopia', tritan: 'Tritanopia' })),
+        row('Off-screen threat cues', check('threatCues'), 'Edge arrows when an enemy winds up an attack you cannot see'));
+    };
+    const listen = (act, b) => {
+      b.classList.add('listening'); b.textContent = 'Press a key…';
+      let done = false;
+      const finish = (code) => {
+        if (done) return; done = true;
+        removeEventListener('keydown', onKey, true); removeEventListener('mousedown', onMouse, true);
+        if (code) { for (const [k, v] of Object.entries(S.keys)) if (v === code && k !== act) S.keys[k] = S.keys[act]; S.keys[act] = code; save(); }
+        render();
+      };
+      const onKey = (e) => { e.preventDefault(); e.stopPropagation(); finish(e.code === 'Escape' ? null : e.code); };
+      const onMouse = (e) => { if (e.target === b) return; e.preventDefault(); e.stopPropagation(); finish('Mouse' + e.button); };
+      addEventListener('keydown', onKey, true); setTimeout(() => { if (!done) addEventListener('mousedown', onMouse, true); }, 50);
+    };
+    render(); UI.openModal(body);
   },
   credits() {
     UI.openModal(h('div', { style: 'text-align:center' }, h('h2', {}, 'Credits'),
@@ -183,12 +237,16 @@ export const UI = {
   rebuildAbilities() {
     const a = $('#abilities'); if (!a) return; a.innerHTML = ''; a._hero = activeHero();
     const hr = activeHero(); if (!hr) return;
-    const list = [{ id: 'basic', key: 'LMB', name: hr.cls.basic.name, lvl: 1 }, ...hr.cls.abilities];
+    const K = G.settings.keys; const kn = UI.api.keyName; const slot = { Q: 'ab1', E: 'ab2', C: 'ab3', R: 'ult' };
+    const list = [{ id: 'basic', key: 'attack', name: hr.cls.basic.name, lvl: 1 }, ...hr.cls.abilities];
+    const mech = hr.cls.mechanic;
+    if (mech) a.append(h('div', { class: 'ab mech', 'data-id': 'mech', title: mech.desc }, h('div', { class: 'k' }, kn(K.mechanic).replace(' mouse', '')), h('div', { class: 'n' }, mech.name), h('div', { class: 'cd hidden' })));
     for (const ab of list) {
       const locked = ab.lvl > G.save.party.level;
-      a.append(h('div', { class: 'ab' + (locked ? ' locked' : ''), 'data-id': ab.id, title: ab.desc || '' }, h('div', { class: 'k' }, ab.key), h('div', { class: 'n' }, ab.id === 'basic' ? ab.name : abilityName(hr.classId, ab.id, G.realm?.kind)), locked ? h('div', { class: 'cd', style: 'font-size:14px' }, `LV ${ab.lvl}`) : h('div', { class: 'cd hidden' })));
+      const keyLbl = kn(K[ab.key === 'attack' ? 'attack' : slot[ab.key]]).replace(' mouse', '');
+      a.append(h('div', { class: 'ab' + (locked ? ' locked' : ''), 'data-id': ab.id, title: ab.desc || '' }, h('div', { class: 'k' }, keyLbl), h('div', { class: 'n' }, ab.id === 'basic' ? ab.name : abilityName(hr.classId, ab.id, G.realm?.kind)), locked ? h('div', { class: 'cd', style: 'font-size:14px' }, `LV ${ab.lvl}`) : h('div', { class: 'cd hidden' })));
     }
-    a.append(h('div', { class: 'ab', style: 'width:52px;height:52px' }, h('div', { class: 'k' }, 'H'), h('div', { class: 'n' }, 'Potion'), h('div', { class: 'pc', style: 'font-family:var(--display);font-size:18px' }, G.save.potions)));
+    a.append(h('div', { class: 'ab', style: 'width:52px;height:52px' }, h('div', { class: 'k' }, kn(K.potion)), h('div', { class: 'n' }, 'Potion'), h('div', { class: 'pc', style: 'font-family:var(--display);font-size:18px' }, G.save.potions)));
   },
   enterLocation(realm) {
     UI.buildHud(); G.mode = 'play';
@@ -246,6 +304,7 @@ export const UI = {
     const pts = G.realm?.markers ? G.realm.markers() : [];
     for (const p of pts.slice(0, 6)) want.push({ kind: 'm', pos: p.clone().add(new THREE.Vector3(0, 3, 0)) });
     const me = activeHero();
+    if (G.settings.threatCues) for (const e of G.entities) if (e.team === 'enemy' && !e.dead && e.windup > 0 && e.target === me) want.push({ kind: 'threat', pos: e.head() });
     for (const e of G.entities) {
       if (e.dead || e.isMinion) continue;
       const d = e.pos.distanceTo(me.pos);
@@ -257,6 +316,14 @@ export const UI = {
       const w8 = want[i]; if (!w8) { el.style.display = 'none'; return; }
       V.copy(w8.pos).project(G.camera);
       let x = (V.x * 0.5 + 0.5) * w, y = (-V.y * 0.5 + 0.5) * hh; const behind = V.z > 1;
+      if (w8.kind === 'threat') {
+        el.className = 'marker'; el.style.color = '#ff6a5a';
+        const off = behind || x < 30 || x > w - 30 || y < 30 || y > hh - 30;
+        if (!off) { el.style.display = 'none'; return; }
+        if (behind) { x = w - x; y = hh - y; } x = Math.max(28, Math.min(w - 28, x)); y = Math.max(70, Math.min(hh - 70, y));
+        el.textContent = '⚠'; el.style.display = ''; el.style.left = x + 'px'; el.style.top = y + 'px'; return;
+      }
+      el.style.color = '';
       if (w8.kind === 'm') {
         el.className = 'marker';
         if (behind || x < 20 || x > w - 20 || y < 20 || y > hh - 20) { if (behind) { x = w - x; y = hh - y; } x = Math.max(24, Math.min(w - 24, x)); y = Math.max(60, Math.min(hh - 60, y)); el.textContent = '◆'; }

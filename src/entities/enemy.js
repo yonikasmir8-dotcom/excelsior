@@ -26,7 +26,7 @@ export class Enemy extends Actor {
     }
     if (opts.skin) Object.assign(spec.colors, opts.skin);
     const L = level;
-    const diff = DIFF[G.settings.difficulty || 'normal'];
+    const d0 = DIFF[G.settings.difficulty || 'normal']; const diff = { hp: d0.hp * (G.settings.enemyHealth ?? 1), dmg: d0.dmg * (G.settings.enemyDamage ?? 1) };
     let hp = T.hp * (1 + 0.3 * (L - 1)) * 2.4 * diff.hp;
     if (cap) hp *= 3.2 + cap.rank * 0.6;
     if (opts.hpMult) hp *= opts.hpMult;
@@ -156,7 +156,7 @@ export class Enemy extends Actor {
     super.update(dt);
   }
   melee(tgt) {
-    this.windup = this.def.attack === 'bite' ? 0.35 : 0.5; this.model.flash(0xff4020, this.windup);
+    this.windup = (this.def.attack === 'bite' ? 0.35 : 0.5) * (G.settings.timing ?? 1); this.model.flash(0xff4020, this.windup);
     this.atkCd = 1.05 + Math.random() * 0.5;
     this.action = () => {
       this.model.play(this.def.attack === 'bite' ? 'bite' : 'attack', 0.3); Audio.play('swing');
@@ -168,7 +168,7 @@ export class Enemy extends Actor {
     };
   }
   shoot(tgt) {
-    this.windup = 0.55; this.model.flash(0xff4020, 0.55); this.atkCd = 1.6 + Math.random() * 1.2;
+    this.windup = 0.55 * (G.settings.timing ?? 1); this.model.flash(0xff4020, this.windup); this.atkCd = 1.6 + Math.random() * 1.2;
     this.action = () => {
       if (tgt.dead) return; this.model.play('shoot', 0.3); Audio.play(this.def.proj === 0xa0d060 ? 'arrow' : 'laser');
       const from = this.center().add(this.forward().multiplyScalar(0.6));

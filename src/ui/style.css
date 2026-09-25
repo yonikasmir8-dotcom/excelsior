@@ -201,3 +201,8 @@ table.stats { border-collapse: collapse; font-size: calc(16px * var(--text-scale
 .notice { max-width: 640px; text-align: center; }
 @media (max-width: 900px) { .classes { grid-template-columns: repeat(2, 1fr); } .inv { grid-template-columns: 1fr; } .tree { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+/* high contrast */
+body.hc .panel { background: #000; border-color: var(--gold-hi); }
+body.hc .pop { text-shadow: 0 0 3px #000, 0 0 3px #000, 0 0 6px #000; }
+body.hc #dialogue .ch button { background: #000; border-color: var(--gold); }
+body.hc .plate { background: rgba(0, 0, 0, 0.75); padding: 1px 4px; }

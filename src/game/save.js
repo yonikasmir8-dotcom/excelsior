@@ -29,5 +29,3 @@ export function slotInfo(slot) {
   const h = s.members[0];
   return { name: h.name, classId: h.classId, level: s.party.level, shards: s.shards.length, time: s.playTime, ending: s.ending };
 }
-export function loadSettings() { try { const s = localStorage.getItem('forgotten-tavern-settings'); if (s) Object.assign(G.settings, JSON.parse(s)); } catch (e) {} }
-export function saveSettings() { try { localStorage.setItem('forgotten-tavern-settings', JSON.stringify(G.settings)); } catch (e) {} }

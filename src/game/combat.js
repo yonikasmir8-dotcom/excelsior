@@ -157,7 +157,7 @@ export function dealDamage(src, tgt, amt, opts = {}) {
   if (tgt.has('guarding') && src && src !== tgt && !opts.unavoidable) {
     const to = src.pos.clone().sub(tgt.pos); to.y = 0; to.normalize();
     if (to.dot(tgt.forward()) > 0.1) {
-      if (G.time - (tgt.guardStart || -9) < 0.35) {
+      if (G.time - (tgt.guardStart || -9) < 0.35 * (G.settings.timing ?? 1)) {
         popText(tgt.head(), 'Parry!', 'fate'); Audio.play('block'); ring(tgt.pos, 2.5, 0xffd870, 0.3); burst(tgt.center().add(tgt.forward().multiplyScalar(0.6)), [0xfff0c0, 0xffd870], 16, 5, 0.3, 0.2, 0);
         src.addStatus('stun', src.isBoss ? 0.6 : 1.4); tgt.addStatus('riposte', 3); tgt.grit = Math.min(100, (tgt.grit || 0) + 35); addMeter(8); hitstop(0.08);
         emit('parry', { tgt, src }); return 0;

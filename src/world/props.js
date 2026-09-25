@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { hash3 } from '../core/rng.js';
+import { quality } from '../core/settings.js';
 
 const tmpC = new THREE.Color();
 function paint(geo, color, jitter = 0.08, seed = 1) {
@@ -111,7 +112,10 @@ const geoCache = new Map();
 // props: [{ type, v, x, y, z, s, r }]
 export function buildProps(group, props) {
   const byKey = new Map();
-  for (const p of props) { const k = p.type + ':' + (p.v || 0); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(p); }
+  const q = quality();
+  for (const p of props) {
+    if ((p.type === 'grass' || p.type === 'flower') && hash3(p.x * 7 | 0, 3, p.z * 7 | 0) > q.grass) continue;
+    if ((p.type === 'bush' || p.type === 'rock' || p.type === 'floatrock') && hash3(p.x * 5 | 0, 9, p.z * 5 | 0) > q.props) continue; const k = p.type + ':' + (p.v || 0); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(p); }
   const d = new THREE.Object3D();
   for (const [k, list] of byKey) {
     const [type, v] = k.split(':');

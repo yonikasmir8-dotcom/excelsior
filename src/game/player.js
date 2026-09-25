@@ -12,7 +12,6 @@ import { startBreak } from './break.js';
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 export const Cam = { yaw: 0, pitch: 0.25, dist: 6.5, cur: new THREE.Vector3(), look: new THREE.Vector3(), fp: false };
 let targetRing = null, holdT = 0, holdTarget = null;
-const KEYS = { Q: 'KeyQ', E: 'KeyE', R: 'KeyR' };
 
 export function initPlayer() {
   targetRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.1, 24), new THREE.MeshBasicMaterial({ color: 0xff3a3a, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }));
@@ -40,8 +39,8 @@ function pickTarget(h) {
 export function updatePlayer(dt) {
   const h = activeHero(); if (!h || UI.modalOpen()) { if (targetRing) targetRing.visible = false; return; }
   const sens = 0.0024 * G.settings.sens;
-  if (Input.locked) { Cam.yaw -= Input.mouse.dx * sens; Cam.pitch = Math.max(-0.9, Math.min(1.2, Cam.pitch + Input.mouse.dy * sens)); }
-  if (Input.hit('KeyV')) { Cam.fp = !Cam.fp; G.settings.camera = Cam.fp ? 'first' : 'third'; }
+  if (Input.locked) { Cam.yaw -= Input.mouse.dx * sens; Cam.pitch = Math.max(-0.9, Math.min(1.2, Cam.pitch + Input.mouse.dy * sens * (G.settings.invertY ? -1 : 1))); }
+  if (Input.actHit('camera')) { Cam.fp = !Cam.fp; G.settings.camera = Cam.fp ? 'first' : 'third'; }
   // switching heroes
   // Live hero switching was cut (GDD §3). While your hero is down, companions come to revive you;
   // after 20s you get back up on your own so the fight can never stall.
@@ -50,40 +49,49 @@ export function updatePlayer(dt) {
   // movement
   const f = V(-Math.sin(Cam.yaw), 0, -Math.cos(Cam.yaw)), r = V(-f.z, 0, f.x);
   const mv = V();
-  if (Input.down('KeyW')) mv.add(f); if (Input.down('KeyS')) mv.sub(f); if (Input.down('KeyD')) mv.add(r); if (Input.down('KeyA')) mv.sub(r);
+  if (Input.act('forward')) mv.add(f); if (Input.act('back')) mv.sub(f); if (Input.act('right')) mv.add(r); if (Input.act('left')) mv.sub(r);
   if (mv.lengthSq()) mv.normalize();
   H.moveInput.copy(mv);
-  H.speed = H.cls.stats.speed * (1 + H.gearStat('speed') / 100 + H.t('fleetfoot') * 0.05) * (Input.down('ControlLeft') ? 0.5 : 1);
-  if (mv.lengthSq() && !Input.mouseDown(0)) { const want = Math.atan2(mv.x, mv.z); let d = want - H.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; H.yaw += d * Math.min(1, dt * 12); }
-  if (Input.hit('Space')) H.jump();
-  if (Input.hit('ShiftLeft') || Input.hit('ShiftRight')) H.dash(mv);
+  H.speed = H.cls.stats.speed * (1 + H.gearStat('speed') / 100 + H.t('fleetfoot') * 0.05) * (Input.act('walk') ? 0.5 : 1);
+  if (mv.lengthSq() && !Input.act('attack')) { const want = Math.atan2(mv.x, mv.z); let d = want - H.yaw; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; H.yaw += d * Math.min(1, dt * 12); }
+  if (Input.actHit('jump')) H.jump();
+  if (Input.actHit('dash')) H.dash(mv);
   // aim
   H.aimTarget = pickTarget(H);
   const T = () => ({ target: H.aimTarget, dir: camForward(), point: aimPoint(), useFate: true });
-  if (Input.mouseDown(0) && !H.mechHeld) { const b = H.basicAbility(); if (!(H.cds.basic > 0)) { if (!H.aimTarget) H.yaw = Math.atan2(camForward().x, camForward().z); H.tryCast(b, T()); } }
+  if (Input.act('attack') && !H.mechHeld) { const b = H.basicAbility(); if (!(H.cds.basic > 0)) { if (!H.aimTarget) H.yaw = Math.atan2(camForward().x, camForward().z); H.tryCast(b, T()); } }
   const list = H.abilityList();
   const tryKey = (key) => { const ab = list.find((a) => a.key === key); if (!ab) return; if (H.cds[ab.id] > 0) { UI.flashCd(ab.id); Audio.play('miss'); return; } if (H.tryCast(ab, T()) === false) UI.toast('No target in range.'); };
-  if (Input.hit(KEYS.Q)) tryKey('Q'); if (Input.hit(KEYS.E)) tryKey('E'); if (Input.hit(KEYS.R)) tryKey('R'); if (Input.hit('KeyC')) tryKey('C');
+  if (Input.actHit('ab1')) tryKey('Q'); if (Input.actHit('ab2')) tryKey('E'); if (Input.actHit('ult')) tryKey('R'); if (Input.actHit('ab3')) tryKey('C');
   // class mechanic (right mouse): press or hold
   H.aimDir = camForward();
-  const rmb = Input.mouseDown(2);
-  if (Input.mouseHit(2)) H.mechPress(T());
-  if (rmb) H.mechHold(dt, T()); else if (H.mechHeld) H.mechRelease(T());
+  // hold mechanics can be switched to toggles (accessibility)
+  const mech = H.cls.mechanic;
+  if (mech?.hold && G.settings.toggleHold) {
+    if (Input.actHit('mechanic')) { if (H.mechHeld) H.mechRelease(T()); else H.mechPress(T()); }
+    if (H.mechHeld) H.mechHold(dt, T());
+  } else {
+    if (Input.actHit('mechanic')) H.mechPress(T());
+    if (Input.act('mechanic')) H.mechHold(dt, T()); else if (H.mechHeld) H.mechRelease(T());
+  }
   // fate dice
   if (Input.mouse.wheel && G.combat.dice.length) { G.combat.sel = (G.combat.sel + Input.mouse.wheel + G.combat.dice.length) % G.combat.dice.length; Audio.play('hover'); }
-  if (Input.hit('KeyX')) armSelectedDie();
-  if (Input.hit('KeyZ')) sacrificeSelectedDie();
-  if (Input.hit('Tab')) startBreak();
-  if (Input.hit('KeyH')) usePotion(H);
+  if (Input.actHit('dieArm')) armSelectedDie();
+  if (Input.actHit('dieSacrifice')) sacrificeSelectedDie();
+  if (Input.actHit('break')) startBreak();
+  if (Input.actHit('potion')) usePotion(H);
   // interact / revive (hold F)
   const it = nearestInteract(H);
   G.promptTarget = it;
-  if (Input.down('KeyF') && it) {
+  const holdToggle = G.settings.toggleHold && it?.hold;
+  if (holdToggle && Input.actHit('interact')) G.holdLatched = G.holdLatched === it ? null : it;
+  if (G.holdLatched && G.holdLatched !== it) G.holdLatched = null;
+  if ((Input.act('interact') || (holdToggle && G.holdLatched === it)) && it) {
     if (it.hold) {
       if (holdTarget !== it) { holdTarget = it; holdT = 0; it.onHoldStart && it.onHoldStart(); }
       holdT += dt * (it.revive && H.t('jury_rig') ? 2 : 1); G.holdProgress = holdT / it.hold();
       if (holdT >= it.hold()) { holdT = 0; holdTarget = null; G.holdProgress = 0; it.use(); }
-    } else if (Input.hit('KeyF')) it.use();
+    } else if (Input.actHit('interact')) it.use();
   } else { holdT = 0; holdTarget = null; G.holdProgress = 0; }
   // target ring
   if (H.aimTarget) { targetRing.visible = true; targetRing.position.copy(H.aimTarget.pos).add(V(0, 0.08, 0)); targetRing.scale.setScalar(H.aimTarget.radius * 2 + 0.4); targetRing.rotation.z += dt * 2; }
@@ -112,8 +120,8 @@ export function usePotion(h) {
 export function updateCamera(dt) {
   const h = activeHero(); if (!h) return;
   const cam = G.camera;
-  G.fovKick = Math.max(0, (G.fovKick || 0) - dt * 30); const fov = 58 + G.fovKick * 0.5 - (h.has('drawing') ? Math.min(1, (h.drawT || 0) / 1.1) * 14 : 0); if (Math.abs(cam.fov - fov) > 0.05) { cam.fov = fov; cam.updateProjectionMatrix(); }
-  const shake = FX.shake; FX.shake = Math.max(0, FX.shake - dt * 2.5);
+  G.fovKick = Math.max(0, (G.fovKick || 0) - dt * 30); const fov = (G.settings.fov || 58) + G.fovKick * 0.5 - (h.has('drawing') ? Math.min(1, (h.drawT || 0) / 1.1) * 14 : 0); if (Math.abs(cam.fov - fov) > 0.05) { cam.fov = fov; cam.updateProjectionMatrix(); }
+  const shake = FX.shake * (G.settings.shake ?? 1); FX.shake = Math.max(0, FX.shake - dt * 2.5);
   const sx = (Math.random() - 0.5) * shake * 0.6, sy = (Math.random() - 0.5) * shake * 0.6;
   if (Cam.fp && !G.inBreak) {
     h.model.root.visible = false;

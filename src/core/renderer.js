@@ -80,7 +80,7 @@ export class FantasyRenderer {
     this.flash = Math.max(0, this.flash - dt * 3);
     this.breakAmt += ((G.inBreak ? 1 : 0) - this.breakAmt) * Math.min(1, dt * 6);
     if (!G.settings.postfx || !this.composer) { this.renderer.render(scene, camera); return; }
-    const u = this.grade.uniforms; u.uFlash.value = Math.min(0.6, this.flash); u.uBreak.value = this.breakAmt; u.uTime.value = G.realTime;
+    const u = this.grade.uniforms; u.uFlash.value = G.settings.reduceFlashing ? 0 : Math.min(0.6, this.flash); u.uBreak.value = this.breakAmt; u.uTime.value = G.realTime;
     this.composer.render(dt);
   }
 }

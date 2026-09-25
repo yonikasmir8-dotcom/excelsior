@@ -1,3 +1,4 @@
+import { G as G_ } from './state.js';
 // Keyboard + mouse state with per-frame "pressed" edges and pointer lock.
 const held = new Set();
 const pressed = new Set();
@@ -37,6 +38,10 @@ export const Input = {
   mouse,
   mouseDown: (b) => mouse.buttons.has(b),
   mouseHit: (b) => mouse.clicked.has(b),
+  // action-based queries (rebindable, see settings.js)
+  act(a) { const c = G_.settings.keys[a]; if (!c) return false; return c.startsWith('Mouse') ? mouse.buttons.has(+c.slice(5)) : held.has(c) || (c === 'ShiftLeft' && held.has('ShiftRight')); },
+  actHit(a) { const c = G_.settings.keys[a]; if (!c) return false; return c.startsWith('Mouse') ? mouse.clicked.has(+c.slice(5)) : pressed.has(c) || (c === 'ShiftLeft' && pressed.has('ShiftRight')); },
+  lastPressed() { return [...pressed][0] || (mouse.clicked.size ? 'Mouse' + [...mouse.clicked][0] : null); },
   endFrame() { pressed.clear(); mouse.clicked.clear(); mouse.dx = 0; mouse.dy = 0; mouse.wheel = 0; },
   get locked() { return mouse.locked; },
 };

@@ -18,6 +18,7 @@ import { summonPet, CLASSES } from './classes.js';
 import { newCombatState, endCombat } from './combat.js';
 import { LEGENDARIES, makeLegendary } from './loot.js';
 import { UI } from '../ui/ui.js';
+import { quality } from '../core/settings.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 
@@ -121,8 +122,8 @@ export function loadLocation(id, opts = {}) {
   G.scene.fog = new THREE.Fog(skyDef.fog[0], skyDef.fog[1], skyDef.fog[2]);
   const hemi = new THREE.HemisphereLight(def.amb, def.ground ?? 0x3a2a30, def.hemi ?? 1.1);
   const sun = new THREE.DirectionalLight(def.sun, def.sunI ?? 2.6);
-  sun.castShadow = G.settings.shadows !== false;
-  sun.shadow.mapSize.set(2048, 2048); const sc = sun.shadow.camera; sc.left = sc.bottom = -45; sc.right = sc.top = 45; sc.near = 1; sc.far = 220;
+  const q = quality(); sun.castShadow = q.shadows > 0;
+  sun.shadow.mapSize.set(q.shadows || 1024, q.shadows || 1024); const sc = sun.shadow.camera; sc.left = sc.bottom = -45; sc.right = sc.top = 45; sc.near = 1; sc.far = 220;
   sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04;
   sun.userData.dir = new THREE.Vector3(...(def.sunDir || [0.55, 0.9, 0.3])).normalize();
   G.sun = sun; G.hemi = hemi; G.realm.storm = G.realm.storm || !!def.storm;

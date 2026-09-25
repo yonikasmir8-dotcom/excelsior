@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { G } from '../core/state.js';
 
 import { tex } from '../world/textures.js';
+import { CB_TELEGRAPH } from '../core/settings.js';
 const MAXP = 2000;
 let particles = [], pts = null, pGeo = null;
 const tmpC = new THREE.Color();
@@ -96,6 +97,8 @@ export function ring(pos, radius = 3, color = 0xffffff, life = 0.35) {
 
 // Ground telegraph: warns the player, then fires onDone. Fair, readable danger.
 export function telegraph(pos, radius, delay, color, onDone, owner = null) {
+  const hostileT = !owner || owner.team === 'enemy';
+  if (hostileT) { delay *= G.settings.timing ?? 1; const cb = CB_TELEGRAPH[G.settings.colorblind]; if (cb) color = cb; }
   const g = new THREE.Group();
   const fill = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12, depthWrite: false, side: THREE.DoubleSide }));
   const edge = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial({ map: tex('runeCircle'), color: new THREE.Color(color).multiplyScalar(1.6), transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, toneMapped: false }));
