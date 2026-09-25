@@ -251,6 +251,27 @@ function setupRealm(id, L, opts) {
   if (id === 'asterion') setupAsterion(L);
   if (id === 'rift') setupRift(L);
   if (id === 'loom') setupLoom(L);
+  // nemesis ambushes: Overlords and Nemeses hunt you down mid-realm
+  if (id !== 'loom') {
+    R.invasionT = 70 + Math.random() * 60;
+    const inner = R.tick;
+    R.tick = (dt) => {
+      inner && inner(dt);
+      if (G.combat.active || R.invaded) return;
+      R.invasionT -= dt;
+      if (R.invasionT > 0) return;
+      R.invasionT = 90 + Math.random() * 90;
+      const pool = S.nemesis.captains.filter((c) => c.alive && c.rank >= 1 && (c.realm === (id === 'rift' ? 'rift' : id) || c.traits.includes('rift_walker')));
+      if (!pool.length || Math.random() > 0.55) return;
+      const c = pool[Math.floor(Math.random() * pool.length)];
+      if (G.entities.some((e) => e.captain === c)) return;
+      const me = G.party[G.activeIndex]; const a = Math.random() * Math.PI * 2;
+      const p = me.pos.clone().add(V(Math.cos(a) * 12, 3, Math.sin(a) * 12));
+      R.invaded = true;
+      UI.banner('AMBUSH!', `${c.name} has tracked you down.`, 2200); Audio.play('roar');
+      setTimeout(() => { const e = spawnCaptain(c, p, 2 + c.rank); e.alert(); burst(e.center(), [0x111111, 0xff3a3a], 40, 8); }, 1200);
+    };
+  }
   // banter on entry
   setTimeout(() => emit('banter', { ev: id, fallback: 'enter' }), 1500);
 }
