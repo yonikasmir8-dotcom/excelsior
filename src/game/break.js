@@ -12,7 +12,7 @@ export function startBreak() {
   if (G.inBreak) return;
   if (!C.active) { UI.toast('Initiative Break only works in combat.'); return; }
   if (C.meter < 100) { UI.toast(`Break meter at ${Math.floor(C.meter)}%. Land hits, take hits, or sacrifice Fate Dice to fill it.`); Audio.play('miss'); return; }
-  G.inBreak = true; G.timeScale = 0; Audio.play('breakStart'); shake(0.3);
+  G.inBreak = true; G.timeScale = 0; Audio.play('breakStart'); shake(0.3); UI.speedlines(true);
   const members = G.party.filter((h) => !h.downed);
   UI.openBreak(members, (choices) => execute(choices));
 }

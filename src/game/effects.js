@@ -45,8 +45,10 @@ function updateParticles(dt) {
     q.v.y += q.g * dt; q.p.addScaledVector(q.v, dt); q.rot += dt * 6;
     if (G.world && G.world.isSolid(q.p.x, q.p.y, q.p.z)) { q.v.multiplyScalar(-0.3); q.p.addScaledVector(q.v, dt * 2); }
   }
+  const camP = G.camera.position;
   for (const q of particles) {
-    const s = q.size * Math.min(1, q.life / q.max * 2);
+    let s = q.size * Math.min(1, q.life / q.max * 2);
+    const dc = q.p.distanceToSquared(camP); if (dc < 9) s *= Math.max(0, (Math.sqrt(dc) - 1) / 2);
     dummy.position.copy(q.p); dummy.rotation.set(q.rot, q.rot * 0.7, 0); dummy.scale.setScalar(s); dummy.updateMatrix();
     pMesh.setMatrixAt(n, dummy.matrix); pMesh.setColorAt(n, tmpC.setHex(q.c)); n++;
   }

@@ -6,6 +6,7 @@ import { CLASSES, cdMod } from '../game/classes.js';
 import { noteAbility, addMeter, dealDamage, strike } from '../game/combat.js';
 import { popText, burst } from '../game/effects.js';
 import { Audio } from '../core/audio.js';
+import { emit } from '../core/events.js';
 
 export function xpForLevel(l) { return Math.round(90 * Math.pow(l, 1.55)); }
 export const MAX_LEVEL = 30;
@@ -94,7 +95,7 @@ export class Hero extends Actor {
     this.dashCd = 1.1 * (1 - this.t('evasion') * 0.15);
     const d = dir.lengthSq() > 0 ? dir.clone().normalize() : this.forward();
     this.knock.add(d.multiplyScalar(22)); this.addStatus('dodge', 0.28); this.addStatus('invuln', 0.2);
-    Audio.play('dash');
+    Audio.play('dash'); if (this === G.party[G.activeIndex]) { emit('dashFx'); G.fovKick = 8; }
     burst(this.center(), 0xffffff, 8, 3, 0.3, 0.2, 0);
   }
   jump() {

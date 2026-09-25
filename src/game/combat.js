@@ -185,6 +185,7 @@ export function dealDamage(src, tgt, amt, opts = {}) {
   if (r.crit) {
     popText(c.clone().add(new THREE.Vector3(0, 1.1, 0)), r.roll === 20 ? 'NAT 20!' : 'CRIT!', 'crit-banner');
     Audio.play('crit'); shake(0.35); hitstop(0.09); G.post && (G.post.flash = 0.35);
+    if (src && src.team === 'party') emit('critFx');
     emit('crit', { src, tgt, roll: r.roll });
   } else if (amt > 0) { Audio.play(opts.heavy ? 'bigHit' : 'hit'); shake(opts.heavy ? 0.2 : 0.06); if (opts.heavy) hitstop(0.05); }
   if (!opts.quiet && amt > 0 && (r.crit || opts.heavy || Math.random() < 0.35)) {

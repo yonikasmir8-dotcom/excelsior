@@ -106,6 +106,7 @@ export function usePotion(h) {
 export function updateCamera(dt) {
   const h = activeHero(); if (!h) return;
   const cam = G.camera;
+  G.fovKick = Math.max(0, (G.fovKick || 0) - dt * 30); const fov = 62 + G.fovKick; if (Math.abs(cam.fov - fov) > 0.05) { cam.fov = fov; cam.updateProjectionMatrix(); }
   const shake = FX.shake; FX.shake = Math.max(0, FX.shake - dt * 2.5);
   const sx = (Math.random() - 0.5) * shake * 0.6, sy = (Math.random() - 0.5) * shake * 0.6;
   if (Cam.fp && !G.inBreak) {

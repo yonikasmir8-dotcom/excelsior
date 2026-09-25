@@ -29,6 +29,7 @@ export const UI = {
   api: null,
   init() {
     root = $('#ui');
+    document.body.append(h('div', { id: 'speedlines' }));
     root.append(h('div', { id: 'toasts' }), h('div', { class: 'lootToast', id: 'lootToasts' }), h('div', { class: 'fade', id: 'fade' }));
   },
   modalOpen() { return !!modal || !!dlg || !!breakEl || G.mode !== 'play'; },
@@ -43,6 +44,7 @@ export const UI = {
   },
   lootToast(it) { const t = h('div', { class: 'it panel', style: `border-left-color:${rarityOf(it.rarity).color}` }, `${it.name}`); $('#lootToasts').append(t); setTimeout(() => t.remove(), 3500); },
   fade(mid) { const f = $('#fade'); f.classList.add('on'); setTimeout(() => { try { mid(); } finally { setTimeout(() => f.classList.remove('on'), 120); } }, 380); },
+  speedlines(gold = false) { const s = $('#speedlines'); if (!s) return; s.classList.toggle('gold', gold); s.classList.remove('on'); void s.offsetWidth; s.classList.add('on'); },
   flashCd(id) { const el = document.querySelector(`.ab[data-id="${id}"]`); if (el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); } },
   objective(text) { G.objectiveText = text; const o = $('#objective .t'); if (o) o.textContent = text; },
   grantXp(n) { UI.api.grantXp(n); },
