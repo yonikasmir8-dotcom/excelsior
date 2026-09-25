@@ -1,6 +1,6 @@
 # The Forgotten Tavern — Game Design Document
 
-**Version:** 1.0 (draft for approval) · **Release standard:** EGDRS v1.0 · **Build baseline:** branch `claude/zealous-lovelace-fd7ueg`
+**Version:** 1.1 (approved scope decisions applied) · **Release standard:** EGDRS v1.0 · **Build baseline:** branch `claude/zealous-lovelace-fd7ueg`
 
 This document defines what will be built, how each part earns its place, and how every release gate will be *demonstrated*, not claimed. Anything not listed here is out of scope for release.
 
@@ -19,8 +19,8 @@ This document defines what will be built, how each part earns its place, and how
 | Genre | Party action RPG (third-person) |
 | Players | 1 (single-player, offline). **No multiplayer, no online services.** |
 | Business model | One-time purchase. **No in-app purchases, no ads, no telemetry by default.** |
-| Launch platforms | Windows 10/11 x64, macOS 12+ (Apple silicon and Intel), Linux x64 (incl. Steam Deck), all via the desktop app |
-| Input | Keyboard + mouse, and gamepad (Xbox / PlayStation layouts via standard mapping) |
+| Launch platforms | Windows 10/11 x64 and macOS 12+ (Apple silicon and Intel), via the desktop app. Linux and Steam Deck are deferred. |
+| Input | Keyboard + mouse. Gamepad is deferred past 1.0 (it was only needed for Steam Deck). |
 | Language | English at launch. All player-facing text lives in string tables so localisation is possible later. |
 | Target length | Story: 5–7 hours. Full completion (all Trials, all lore, Rift depth 10): 15–20 hours. |
 
@@ -73,18 +73,18 @@ Every mechanic below states what it does, why it exists, the decision it creates
 
 | Action | Keyboard + mouse | Gamepad |
 |---|---|---|
-| Move / camera | WASD / mouse | Left stick / right stick |
+| Move / camera | WASD / mouse | (future) Left stick / right stick |
 | Basic attack | Left mouse | RT |
 | Abilities 1–3 / ultimate | Q, E, C / R | X, Y, B / RB+LB together |
 | Class mechanic | Right mouse (hold or press) | LT |
 | Dodge / jump | Shift / Space | A (tap = dodge, hold = jump) |
-| Initiative Break | Tab | RS click |
+| Initiative Break | Tab | — |
 | Fate Dice: cycle / arm / sacrifice | Wheel / X / Z | D-pad left-right / D-pad up / D-pad down |
 | Interact (hold to revive) | F | A near an object |
 | Potion | H | LS click |
 | Menus | I, K, J, P, Esc | Start / View |
 
-**Every binding is rebindable** (keyboard and gamepad). Hold actions can be switched to toggles.
+**Every binding is rebindable.** Hold actions can be switched to toggles. The gamepad column is kept for a future update and is not in 1.0.
 
 ---
 
@@ -203,7 +203,7 @@ The realms are fraying, and the Unraveller erases them from memory. Each realm y
   - Colour-blind modes (protanopia, deuteranopia, tritanopia).
   - Telegraphs also use shape and animation, not colour alone.
 - **Controls:**
-  - Full keyboard and gamepad remapping.
+  - Full keyboard and mouse remapping.
   - Hold-to-toggle for guard, draw and revive.
   - A one-handed preset (mouse-only abilities via a radial menu).
 - **Motion and flashing:**
@@ -223,7 +223,6 @@ The realms are fraying, and the Unraveller erases them from memory. Each realm y
 | Minimum | Intel Iris Xe / Radeon 680M, 8 GB RAM | 1080p, Low | Average ≥ 60 fps, 1% low ≥ 45, 0.1% low ≥ 30 |
 | Recommended | GTX 1060 / RX 580, 16 GB | 1080p, High | Average ≥ 60, 1% low ≥ 55 |
 | High | RTX 3070+ | 1440p, Ultra | Average ≥ 90, 1% low ≥ 70 |
-| Steam Deck | Deck | 800p, Deck preset | Locked 45, 1% low ≥ 40 |
 
 - **Loading:** location load ≤ 5 s on recommended hardware; boot to title ≤ 8 s.
 - **Memory:** ≤ 1.5 GB process memory, with < 10% growth over 8 hours.
@@ -259,7 +258,7 @@ The realms are fraying, and the Unraveller erases them from memory. Each realm y
 ---
 
 ## 14. Compatibility (P9)
-- **Test matrix:** Windows 10 and 11, macOS on Apple silicon and Intel, Ubuntu LTS, Steam Deck. Each is tested on a fresh install, an update over the previous build, offline, with keyboard and mouse, and with a gamepad.
+- **Test matrix:** Windows 10 and 11, and macOS on Apple silicon and Intel. Each is tested on a fresh install, an update over the previous build, offline, and with keyboard and mouse.
 - **Fonts and assets are bundled locally** (open-licence fonts), with zero network requests. This is verified by an automated check that blocks the network.
 
 ---
@@ -270,7 +269,7 @@ The realms are fraying, and the Unraveller erases them from memory. Each realm y
   - **Characters:** sculpted with heroic proportions, and **every enemy type gets a unique silhouette**.
 - **VFX:** soft glowing particles, lightning bolts, rune-circle telegraphs. There is a particle budget per effect so fights stay readable.
 - **Audio:** fully procedural, with a music score per realm and a combat layer.
-  - **Needs your decision:** procedural audio has to be **explicitly approved as final**, otherwise it counts as placeholder under P3.2. The alternative is commissioned or licensed music and SFX, which carries a cost.
+  - **Approved as final (decision 1):** procedural audio is the intended launch audio, so it is not placeholder under P3.2.
 - **Menus:** dark leather and gold-trim panels, with serif display type and body text.
 - **Portraits:** rendered from the in-game models, styled as painted cameos.
 
@@ -314,7 +313,7 @@ This table is tracked in `docs/CONTENT_MATRIX.md` and updated at every milestone
 | **Regression suite** | Every S0–S2 fix adds a test that must pass forever |
 
 **What needs humans.** I can't do these; they need you or people you recruit:
-- **Real hardware:** running the benchmark on the minimum, recommended and high tiers, plus a Steam Deck. The benchmark writes a results file you can send back.
+- **Real hardware:** running the benchmark on the minimum, recommended and high tiers on Windows and macOS. The benchmark writes a results file you can send back.
 - **Blind Player Test:** 5–8 people who have never seen the game. I'll provide the observation sheet and the build.
 - **Fresh-eyes review:** someone other than the builder has to sign off each area. That's you, plus any testers.
 - **Release Authority:** you act as studio director and sign the scorecard. I'll prepare it with evidence links for every gate.
@@ -331,7 +330,7 @@ This table is tracked in `docs/CONTENT_MATRIX.md` and updated at every milestone
 | **M0 — Stabilise** | The in-progress art and class overhaul builds, runs every realm, and passes smoke tests. Pushed. |
 | **M1 — Vertical slice** | Tavern, tutorial and Emberwood meet the full standard: art final, UX, accessibility, performance on the minimum tier, and save integrity. **You review it here.** |
 | **M2 — Content complete** | All realms, side quests, Rift objectives, Trials and the endgame are in. The content matrix is all "Implemented". |
-| **M3 — Systems complete** | Settings, remapping, gamepad, accessibility, saves, crash handling and performance presets are in. The automation suite is green. |
+| **M3 — Systems complete** | Settings, remapping, accessibility, saves, crash handling and performance presets are in. The automation suite is green. |
 | **M4 — Beta** | Blind-player test, hardware matrix and balance pass. All S0, S1 and core S2 defects are fixed. |
 | **PENCIL DOWN** | Only release blockers can be fixed after this point. |
 | **ERC — release candidate** | A reproducible, tagged build; the 24-hour release test; the scorecard signed off. |
@@ -339,13 +338,13 @@ This table is tracked in `docs/CONTENT_MATRIX.md` and updated at every milestone
 ---
 
 ## 19. Out of scope for 1.0
-Multiplayer, online features, in-app purchases, voice acting, localisation beyond English, screen-reader support, mod support, and a mobile or web store release.
+Multiplayer, online features, in-app purchases, voice acting, localisation beyond English, screen-reader support, mod support, gamepad support, Linux and Steam Deck, and a mobile or web store release.
 
 ---
 
-## 20. Decisions needed from you
-1. **Audio:** approve procedural audio as final, or budget for commissioned music and SFX?
-2. **Platforms:** is Windows, macOS and Linux/Steam Deck the right set? macOS adds notarisation work.
-3. **Gamepad:** it's required for the Steam Deck target. Confirm it stays in scope.
-4. **Cuts:** approve removing live hero switching, the Style meter and destructible terrain.
-5. **Level cap:** reduce from 30 to 20 for balance, as proposed?
+## 20. Decisions (resolved)
+1. **Audio:** procedural audio approved as final.
+2. **Platforms:** Windows and macOS only for 1.0.
+3. **Gamepad / Steam Deck:** deferred past 1.0.
+4. **Cuts:** approved. Live hero switching, the Style meter and destructible terrain are removed.
+5. **Level cap:** reduced to 20.
