@@ -1,0 +1,46 @@
+// New-player path: title → create → prologue → cellar tutorial (all 9 lessons) → back to Tavern.
+import { chromium } from 'playwright';
+const URL = process.env.GAME_URL || 'http://localhost:5173/';
+const SHOTS = process.env.SHOTS;
+const browser = await chromium.launch({ executablePath: process.env.CHROME || '/opt/pw-browsers/chromium', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+const errs = []; page.on('pageerror', (e) => errs.push(e.message + ' @ ' + (e.stack || '').split('\n')[1])); page.on('console', (m) => { if (m.type() === 'error' && !m.text().includes('Failed to load')) errs.push('console: ' + m.text().slice(0, 400)); });
+const ev = (f, a) => page.evaluate(f, a);
+const results = []; const check = (n, ok, d = '') => { results.push(ok); console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ? '  — ' + d : ''}`); };
+await page.goto(URL); await page.waitForFunction(() => window.__API);
+await ev(() => { localStorage.clear(); });
+await page.reload(); await page.waitForFunction(() => window.__API); await page.waitForTimeout(1500);
+await page.click('text=Continue'); await page.waitForTimeout(300); // photosensitivity notice
+await page.click('text=New Game'); await page.click('.slot >> nth=0'); await page.click('.cls >> nth=5'); await page.fill('#heroName', 'Tess');
+await page.click('text=Walk Through the Door'); await page.waitForTimeout(3500);
+for (let i = 0; i < 20 && await page.$('#dialogue'); i++) { if (await page.$('.skillroll')) { await page.waitForTimeout(1800); continue; } await page.click('#dialogue .ch button >> nth=0'); await page.waitForTimeout(450); }
+await page.waitForTimeout(3500);
+if (SHOTS) await page.screenshot({ path: SHOTS + '/tut-0.png' });
+const st = await ev(() => ({ loc: window.__G.location, party: window.__G.party.map((h) => h.name), tut: window.__G.realm?.tutStep, hudDice: getComputedStyle(document.querySelector('#dice')).display !== 'none' }));
+check('prologue ends in the cellar with a starter companion', st.loc === 'cellar' && st.party.length === 2, JSON.stringify(st));
+check('Fate Dice hidden until taught', st.hudDice === false);
+if (SHOTS) await page.screenshot({ path: SHOTS + '/tut-1.png' });
+const step = () => ev(() => window.__G.realm.tutStep);
+const waitStep = async (n, ms = 8000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await step() >= n) return true; await page.waitForTimeout(250); } return false; };
+await ev(() => { const h = window.__G.party[0]; h.pos.copy(window.__G.layout.moveTo); }); check('lesson 1 move', await waitStep(1));
+await ev(() => { window.__G.party[0].dash(window.__G.party[0].forward()); }); check('lesson 2 dodge', await waitStep(2));
+await ev(() => { const G = window.__G, h = G.party[0], d = G.entities.find((e) => e.type === 'dummy'); for (let i = 0; i < 5; i++) window.__M.combat.dealDamage(h, d, 5, { roll: { hit: true } }); }); check('lesson 3 attack', await waitStep(3));
+await ev(() => { const h = window.__G.party[0]; h.mechPress({}); h.mechHold(1.2, {}); h.mechRelease({}); }); check('lesson 4 class signature', await waitStep(4));
+await ev(() => { const G = window.__G, h = G.party[0], d = G.entities.find((e) => e.type === 'dummy'); h.tryCast(h.abilityList()[0], { target: d, dir: d.center().sub(h.center()).normalize(), point: d.pos.clone() }); }); check('lesson 5 ability', await waitStep(5));
+await page.waitForTimeout(800);
+const diceShown = await ev(() => getComputedStyle(document.querySelector('#dice')).display !== 'none');
+await ev(() => { const G = window.__G, h = G.party[0]; const e = G.entities.find((x) => x.type === 'cellarRat' && !x.dead); window.__M.combat.startCombat(); G.combat.armed = 0; if (!G.combat.dice.length) G.combat.dice.push(15); window.__M.combat.strike(h, e, 3, { useFate: true }); }); check('lesson 6 Fate Dice (and dice HUD revealed)', diceShown && await waitStep(6));
+await ev(() => { const G = window.__G; for (const e of G.entities.filter((x) => x.type === 'cellarRat')) window.__M.combat.dealDamage(G.party[0], e, 999, { roll: { hit: true } }); }); check('lesson 7 clear goblins', await waitStep(7));
+await page.waitForTimeout(600);
+await ev(() => { window.__G.combat.active = true; window.__G.combat.meter = 100; }); await page.keyboard.press(await ev(() => window.__G.settings.keys.break)); await page.waitForTimeout(700);
+if (SHOTS) await page.screenshot({ path: SHOTS + '/tut-break.png' });
+await page.keyboard.press('Enter'); check('lesson 8 Initiative Break', await waitStep(8, 15000));
+await ev(() => { const G = window.__G; const it = G.interactables.find((x) => (typeof x.label === 'function' ? x.label() : x.label).startsWith('Climb')); it.use(); }); await page.waitForTimeout(3500);
+const end = await ev(() => ({ loc: window.__G.location, tut: window.__G.save.flags.tutorial, inT: window.__G.save.flags.inTutorial, tutEl: !!document.querySelector('#tut') }));
+const crashed = await ev(() => !!document.getElementById('crashbox'));
+check('no recovery screen appeared during the tutorial', !crashed);
+check('returns to the Tavern with tutorial complete', end.loc === 'tavern' && end.tut === 1 && !end.inT && !end.tutEl, JSON.stringify(end));
+if (SHOTS) await page.screenshot({ path: SHOTS + '/tut-end.png' });
+console.log(errs.length ? 'PAGE ERRORS:\n' + errs.join('\n') : 'no page errors');
+const failed = results.filter((x) => !x).length; console.log(`\n${results.length - failed}/${results.length} passed`);
+await browser.close(); process.exit(failed || errs.length ? 1 : 0);
