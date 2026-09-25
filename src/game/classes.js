@@ -22,28 +22,21 @@ function meleeHits(c, range, arc, fn) {
 function faceAim(c, T) { const d = aimDir(c, T); c.yaw = Math.atan2(d.x, d.z); }
 function lunge(c, dist) { c.knock.add(c.forward().multiplyScalar(dist)); }
 
-// ── Sorcerer wild magic ──────────────────────────────────────────────────────
-const SURGES = [
-  { r: [1, 1], name: 'Backfire!', bad: true, fx: (c) => { dealDamage(null, c, c.maxHp * 0.08, { roll: { hit: true }, unavoidable: true, type: 'fire' }); burst(c.center(), 0xff4020, 20, 5); } },
-  { r: [2, 2], name: 'Chicken Hat', bad: true, fx: (c) => { popText(c.head(), 'BAWK!', 'sfx'); c.addStatus('slow', 2); } },
-  { r: [3, 3], name: 'Random Teleport', fx: (c) => { c.pos.add(V((Math.random() - 0.5) * 10, 3, (Math.random() - 0.5) * 10)); burst(c.center(), 0xc070ff, 20, 4); } },
-  { r: [4, 17], name: null },
-  { r: [18, 18], name: 'Mana Rush', fx: (c) => { for (const k in c.cds) c.cds[k] *= 0.5; } },
-  { r: [19, 19], name: 'Echo Cast', fx: (c, ab, T) => { setTimeout(() => { if (!c.dead && !c.downed) ab.cast(c, { ...T, echo: true }); }, 300); } },
-  { r: [20, 20], name: 'WILD SURGE!', fx: (c) => { for (const e of enemiesNear(c.pos, 10, c.team)) { beam(c.center(), e.center(), 0xff60ff, 0.2, 0.3, 1); dealDamage(c, e, 20 * c.pow, { type: 'lightning', roll: { hit: true } }); } addStyle(30); } },
-];
-function wildSurge(c, ab, T) {
-  if (T.echo) return;
-  let r = d20();
-  const chaos = c.t('chaos_bloom'); const tamed = c.t('tamed_chaos');
-  if (chaos) r = Math.min(20, r + chaos * 2);
-  if (tamed >= 2 && r <= 3) r = 4;
-  if (r <= 2 && c.gearFlag('chicken_luck')) r = 19;
-  const s = SURGES.find((s) => r >= s.r[0] && r <= s.r[1]);
-  if (!s || !s.name) return;
-  popText(c.head().add(V(0, 0.6, 0)), `d${r}: ${s.name}`, s.bad ? 'fumble' : 'fate');
-  s.fx(c, ab, T);
+// ── Sorcerer elements ────────────────────────────────────────────────────────
+const ELEM = {
+  fire: { name: 'Fire', color: 0xff7a2a, css: '#ff9a5a', type: 'fire', tag: 'fire' },
+  frost: { name: 'Frost', color: 0x9ad8ff, css: '#a8dcff', type: 'frost', tag: 'frost' },
+  storm: { name: 'Storm', color: 0xaef4ff, css: '#c8f8ff', type: 'lightning', tag: 'lightning' },
+};
+export { ELEM };
+function resonate(c, el) {
+  if (c.lastElem && c.lastElem !== el && G.time - (c.lastElemT || -99) < 5) { const max = 3 + c.t('deep_resonance'); c.resonance = Math.min(max, (c.resonance || 0) + 1); c.resT = G.time; }
+  c.lastElem = el; c.lastElemT = G.time;
 }
+function resMult(c) { if (G.time - (c.resT || -99) > 6) c.resonance = 0; return 1 + (c.resonance || 0) * 0.1; }
+function burn(c, e, t) { e.addStatus('burn', t, { every: 0.5, onTick: (x) => dealDamage(c, x, 2 * c.pow, { type: 'fire', quiet: true, roll: { hit: true } }) }); }
+function chill(e, t, c) { e.addStatus('chill', t); e.addStatus('slow', t); }
+function freeze(e, t) { if (e.isBoss) { e.addStatus('slow', t); return; } e.addStatus('frozen', t); e.addStatus('stun', t); e.model?.flash(0x9ad8ff, t); }
 
 // ── ability helpers ──────────────────────────────────────────────────────────
 function bolt(c, T, o) {
@@ -60,8 +53,12 @@ export const CLASSES = {
     blurb: 'A wall of steel who gets stronger the more punishment they take. Grit builds when you are hit; at full Grit your next ability hits 50% harder.',
     stats: { hp: 120, hpPer: 18, ac: 16, speed: 6.4, atk: 4 },
     skill: { intimidation: 4, athletics: 5, persuasion: 1 },
-    model: { weapon: 'sword', hat: 'helm', extras: ['shield', 'shoulder', 'cape'], colors: { body: 0xb03028, legs: 0x4a3a30, accent: 0x9aa4b0, cape: 0x8a1818 } },
-    passive: { name: 'Grit', desc: 'Taking damage builds Grit. At 100 Grit, your next ability deals +50% damage.' },
+    model: { weapon: 'sword', heroic: 1.35, fur: true, extras: ['shield', 'shoulder', 'harness', 'cape'], colors: { body: 0x7a2a24, legs: 0x5a4030, accent: 0xd8a840, cape: 0x6a1418, boots: 0x4a3020, shield: 0x7a2a24 } },
+    passive: { name: 'Resolve', desc: 'Blocking and taking hits builds Resolve. At 100 Resolve, your next ability deals +50% damage.' },
+    mechanic: { name: 'Guard', key: 'RMB', hold: true, desc: 'Hold to raise your shield: frontal damage is cut by 75%. Raise it just before a blow lands to PARRY: the attacker is staggered and your next strike is a guaranteed critical.',
+      start(c) { c.guardStart = G.time; c.addStatus('guarding', 99); c.model.play('guard', 99); Audio.play('block'); },
+      tick(c) { c.model.state = 'guard'; c.model.stateT = 1; },
+      end(c) { c.removeStatus('guarding'); c.model.play('idle', 0.01); } },
     basic: { name: 'Blade Combo', cd: 0.45, range: 2.6, cast(c, T) {
       c.combo = ((c.combo || 0) + 1) % 3; faceAim(c, T); lunge(c, 3);
       c.model.play(c.combo === 2 ? 'spin' : 'attack', 0.3); Audio.play('swing');
@@ -89,7 +86,7 @@ export const CLASSES = {
           }
         });
         return true; } },
-      { id: 'battlecry', key: 'RMB', lvl: 4, name: 'Battle Cry', cd: 14, tags: ['taunt'], desc: 'Taunt all enemies nearby and take 30% less damage for 5s.', cast(c, T) {
+      { id: 'battlecry', key: 'C', lvl: 4, name: 'Battle Cry', cd: 14, tags: ['taunt'], desc: 'Taunt all enemies nearby and take 30% less damage for 5s.', cast(c, T) {
         c.model.play('cheer', 0.6); Audio.play('roar'); ring(c.pos, 10, 0xff5040, 0.5); shake(0.2);
         c.addStatus('battlecry', 5); if (c.t('immovable')) c.knockResist = 1;
         for (const e of enemiesNear(c.pos, 10, c.team)) { e.tauntedBy = c; e.tauntT = 5; e.addStatus('taunted', 5); }
@@ -128,105 +125,120 @@ export const CLASSES = {
 
   // ───────────────────────────────── SORCERER ────────────────────────────────
   sorcerer: {
-    name: 'Sorcerer', role: 'Chaotic blaster', color: '#b04ae0',
-    blurb: 'Raw, unstable magic. Every spell rolls a Wild Surge die: mostly nothing, sometimes glorious, occasionally a chicken.',
+    name: 'Sorcerer', role: 'Elemental weaver', color: '#8ab8ff',
+    blurb: 'Commands fire, frost and storm. Right-click to change attunement: every spell transforms. Weave different elements back to back to build Resonance.',
     stats: { hp: 80, hpPer: 11, ac: 12, speed: 6.2, atk: 5 },
     skill: { arcana: 5, persuasion: 3, insight: 2 },
-    model: { weapon: 'staff', hat: 'wizard', extras: ['robe', 'cape'], colors: { body: 0x5a2a8a, legs: 0x3a1a5a, accent: 0xe0b040, hat: 0x4a1a7a, cape: 0x2a0a4a, magic: 0xff7a30 } },
-    passive: { name: 'Wild Magic', desc: 'Each spell rolls a d20 surge. 20: a free lightning nova. 19: the spell echoes. 1: backfire.' },
-    basic: { name: 'Arcane Bolt', cd: 0.4, range: 22, cast(c, T) {
-      faceAim(c, T); c.model.play('shoot', 0.25); Audio.play('zap');
-      bolt(c, T, { color: 0xd080ff, size: 0.22, speed: 30, homing: 2, onHit: (e) => { strike(c, e, '1d8+1', T, { type: 'lightning', word: 'lightning', sfxColor: '#d080ff' }); let prev = e; const seen = new Set([e]); for (let i = 0; i < c.t('conductor'); i++) { const n = nearestEnemy(prev, c.team, 6, (x) => !seen.has(x)); if (!n) break; seen.add(n); beam(prev.center(), n.center(), 0xd080ff, 0.08, 0.15, 0.6); strike(c, n, '1d6', { useFate: false }, { type: 'lightning', quiet: true }); prev = n; } } });
+    model: { weapon: 'staff', hat: 'hood', sleeves: true, extras: ['robe', 'cape'], colors: { body: 0x2a2a5a, legs: 0x1a1a3a, accent: 0xc8a050, hat: 0x2a2a5a, cape: 0x1a1a40, magic: 0xaef4ff } },
+    passive: { name: 'Resonance', desc: 'Casting a spell of a different element than your last within 5s grants Resonance (+10% spell damage, stacks 3×).' },
+    mechanic: { name: 'Attunement', key: 'RMB', desc: 'Cycle Fire → Frost → Storm. Your bolt, Evocation, Conjuration and Cataclysm all change with it.', press(c) {
+      const order = ['fire', 'frost', 'storm']; c.element = order[(order.indexOf(c.element || 'fire') + 1) % 3];
+      Audio.play('zap'); burst(c.center(), ELEM[c.element].color, 16, 3, 0.6, 0.3, 1); popText(c.head(), ELEM[c.element].name, 'fate', { color: ELEM[c.element].css });
+      if (c.t('triune')) for (const k in c.cds) if (k !== 'basic') c.cds[k] = Math.max(0, c.cds[k] - 1.5);
+      if (c.model?.parts.weapon) c.model.parts.weapon.traverse((o) => { if (o.material?.emissive && o.material.emissiveIntensity > 1) o.material.emissive.setHex(ELEM[c.element].color); });
+      return true; } },
+    basic: { name: 'Arcane Bolt', cd: 0.42, range: 22, cast(c, T) {
+      faceAim(c, T); c.model.play('shoot', 0.25); const el = ELEM[c.element || 'fire'];
+      bolt(c, T, { color: el.color, size: 0.26, speed: 32, homing: 2, onHit: (e) => {
+        strike(c, e, '1d8+1', T, { type: el.type, mult: resMult(c) });
+        if (c.element === 'frost') chill(e, 1.2, c); else if (c.element === 'fire' && Math.random() < 0.3) burn(c, e, 2);
+        else if (c.element === 'storm') { const n = nearestEnemy(e, c.team, 6, (x) => x !== e); if (n) { beam(e.center(), n.center(), el.color, 0.06, 0.15, 0.6); strike(c, n, '1d4+1', { useFate: false }, { type: 'lightning', quiet: true }); } }
+      } });
       return true; } },
     abilities: [
-      { id: 'firebolt', key: 'Q', lvl: 1, name: 'Firebolt', cd: 3.5, tags: ['fire'], desc: 'A roaring bolt that explodes and sets foes ablaze.', cast(c, T) {
-        faceAim(c, T); c.model.play('shoot', 0.3); Audio.play('fire');
-        const explode = (p, direct) => {
-          burst(p, [0xff5a1a, 0xffd23a], 24, 7, 0.6, 0.25); ring(p, 3, 0xff7a30); markTag('fire', p, c);
-          for (const e of enemiesNear(p, 2.8 + c.t('inferno') * 0.6, c.team)) {
-            const r = strike(c, e, e === direct ? '2d10+4' : '1d10+2', T, { type: 'fire', heavy: e === direct });
-            e.addStatus('burn', 3 + c.t('inferno'), { every: 0.5, onTick: (x) => dealDamage(c, x, 2 * c.pow, { type: 'fire', quiet: true, roll: { hit: true } }) });
-          }
-        };
-        const n = c.gearFlag('triple_firebolt') ? 3 : 1;
-        for (let i = 0; i < n; i++) { const d = aimDir(c, T).applyAxisAngle(V(0, 1, 0), (i - (n - 1) / 2) * 0.18); bolt(c, { ...T, target: i === 0 ? T.target : null, dir: d }, { color: 0xff6a1a, size: 0.42, speed: 28, onHit: (e, p) => explode(p, e), onWorld: (p) => explode(p), onExpire: (p) => explode(p) }); }
-        wildSurge(c, this, T); return true; } },
-      { id: 'chain', key: 'E', lvl: 2, name: 'Chain Lightning', cd: 6, tags: ['lightning'], desc: 'Lightning leaps between up to 4 enemies.', cast(c, T) {
-        faceAim(c, T); c.model.play('cast', 0.35); Audio.play('zap');
-        let tgt = T.target && !T.target.dead ? T.target : nearestEnemy(c, c.team, 18);
-        if (!tgt) return false;
-        const hitSet = new Set(); let prev = c.center().add(V(0, 0.5, 0));
-        const max = 4 + c.t('arc_jumps') * 2 + (c.t('eye_of_storm') ? 8 : 0);
-        const roll = attackRoll(c, tgt, T);
-        for (let i = 0; i < max && tgt; i++) {
-          hitSet.add(tgt); beam(prev, tgt.center(), 0xaef4ff, 0.14, 0.25, 1.1);
-          strike(c, tgt, '2d6+2', {}, { type: 'lightning', roll, mult: 1 + c.t('static') * 0.1 * i });
-          if (c.t('static')) tgt.addStatus('slow', 1.5);
-          markTag('lightning', tgt.pos, c);
-          prev = tgt.center(); tgt = nearestEnemy(tgt, c.team, 8, (e) => !hitSet.has(e));
-          if (c.t('eye_of_storm') && !roll.hit) break;
+      { id: 'evocation', key: 'Q', lvl: 1, name: 'Evocation', cd: 4, tags: ['fire'], desc: 'Fire: exploding Fireball. Frost: piercing Ice Lance that shatters chilled foes. Storm: Chain Lightning.', cast(c, T) {
+        faceAim(c, T); c.model.play('shoot', 0.3); const el = c.element || 'fire'; resonate(c, el); this.tags = [ELEM[el].tag];
+        if (el === 'fire') {
+          Audio.play('fire');
+          const explode = (p, direct) => { burst(p, [0xff7a2a, 0xffd07a], 30, 5, 0.7, 0.35, 1); ring(p, 3, 0xff7a2a); markTag('fire', p, c);
+            for (const e of enemiesNear(p, 2.8 + c.t('inferno') * 0.6, c.team)) { strike(c, e, e === direct ? '2d10+4' : '1d10+2', T, { type: 'fire', heavy: e === direct, mult: resMult(c) }); burn(c, e, 3 + c.t('inferno')); } };
+          const n = c.gearFlag('triple_firebolt') ? 3 : 1;
+          for (let i = 0; i < n; i++) { const d = aimDir(c, T).applyAxisAngle(V(0, 1, 0), (i - (n - 1) / 2) * 0.18); bolt(c, { ...T, target: i === 0 ? T.target : null, dir: d }, { color: 0xff7a2a, size: 0.5, speed: 28, onHit: (e, p) => explode(p, e), onWorld: (p) => explode(p), onExpire: (p) => explode(p) }); }
+        } else if (el === 'frost') {
+          Audio.play('laser');
+          bolt(c, T, { color: 0x9ad8ff, size: 0.34, speed: 42, pierce: 3, onHit: (e) => { const frozen = e.has('frozen') || e.has('chill'); strike(c, e, '2d8+3', T, { type: 'frost', mult: resMult(c) * (frozen ? 1.8 + c.t('permafrost') * 0.2 : 1), heavy: frozen }); if (frozen) { burst(e.center(), 0xd8f4ff, 20, 5, 0.6, 0.3); popText(e.head(), 'Shatter', 'fate'); e.removeStatus('frozen'); } chill(e, 2.5, c); markTag('frost', e.pos, c); } });
+        } else {
+          Audio.play('zap');
+          let tgt = T.target && !T.target.dead ? T.target : nearestEnemy(c, c.team, 18); if (!tgt) return false;
+          const hitSet = new Set(); let prev = c.center().add(V(0, 0.5, 0)); const max = 4 + c.t('arc_jumps') * 2 + (c.t('eye_of_storm') ? 8 : 0);
+          const roll = attackRoll(c, tgt, T);
+          for (let i = 0; i < max && tgt; i++) { hitSet.add(tgt); beam(prev, tgt.center(), 0xaef4ff, 0.12, 0.25, 1.1); strike(c, tgt, '2d6+2', {}, { type: 'lightning', roll, mult: resMult(c) * (1 + c.t('static') * 0.1 * i) }); if (c.t('static')) tgt.addStatus('slow', 1.5); markTag('lightning', tgt.pos, c); prev = tgt.center(); tgt = nearestEnemy(tgt, c.team, 8, (e) => !hitSet.has(e)); if (c.t('eye_of_storm') && !roll.hit) break; }
         }
-        wildSurge(c, this, T); return true; } },
-      { id: 'blink', key: 'RMB', lvl: 4, name: 'Blink', cd: 7, tags: ['blink'], desc: 'Teleport 9m, leaving an arcane blast behind.', cast(c, T) {
-        const dir = flat((T.dir || c.forward()).clone());
-        const from = c.pos.clone(); Audio.play('shadow');
-        burst(c.center(), 0xc070ff, 24, 5, 0.5); ring(from, 3.5, 0xc070ff);
-        for (const e of enemiesNear(from, 3.5, c.team)) strike(c, e, '1d10+3', T, { type: 'lightning', knock: 8 });
-        let dist = 9; for (let d = 9; d > 0; d -= 0.5) { const p = from.clone().addScaledVector(dir, d); if (!G.world.boxHits(p.x - 0.35, p.y + 0.1, p.z - 0.35, p.x + 0.35, p.y + 1.8, p.z + 0.35)) { dist = d; break; } dist = 0; }
-        c.pos.addScaledVector(dir, dist); c.vel.set(0, 0, 0); c.addStatus('invuln', 0.3);
-        burst(c.center(), 0xc070ff, 24, 5, 0.5); markTag('blink', c.pos, c);
+        return true; } },
+      { id: 'conjuration', key: 'E', lvl: 2, name: 'Conjuration', cd: 9, tags: ['fire'], desc: 'Fire: a Flame Pillar that burns. Frost: a Frost Nova that freezes everything around you. Storm: a Thunderstrike that stuns.', cast(c, T) {
+        const el = c.element || 'fire'; resonate(c, el); this.tags = [ELEM[el].tag];
+        if (el === 'fire') {
+          const p = aimPoint(c, T, 20); c.model.play('cast', 0.5); Audio.play('fire');
+          zone({ pos: p, radius: 3.2, life: 4, color: 0xff7a2a, tag: 'fire', owner: c, tick: (z) => { burst(z.pos.clone().add(V(0, 1, 0)), [0xff7a2a, 0xffc04a], 6, 3, 0.8, 0.4, 3); for (const e of enemiesNear(z.pos, 3.2, c.team)) { dealDamage(c, e, 4 * c.pow * resMult(c), { type: 'fire', quiet: true, roll: { hit: true } }); burn(c, e, 2); } } });
+          markTag('fire', p, c);
+        } else if (el === 'frost') {
+          c.model.play('slam', 0.5); Audio.play('holy'); ring(c.pos, 7, 0x9ad8ff, 0.6); burst(c.center(), [0xd8f4ff, 0x9ad8ff], 40, 8, 0.8, 0.35, 0);
+          for (const e of enemiesNear(c.pos, 6.5, c.team)) { strike(c, e, '2d6+2', T, { type: 'frost', knock: 6, mult: resMult(c) }); freeze(e, 2 + c.t('permafrost') * 0.5); markTag('frost', e.pos, c); }
+        } else {
+          const p = aimPoint(c, T, 22); c.model.play('cast', 0.6);
+          telegraph(p, 3.2, 0.55, 0xaef4ff, (q) => { beam(q.clone().add(V(0, 26, 0)), q, 0xaef4ff, 0.35, 0.35, 2.5); Audio.play('thunder'); shake(0.15); burst(q, [0xaef4ff, 0xffffff], 36, 7, 0.6, 0.35, 0);
+            for (const e of enemiesNear(q, 3.2, c.team)) { strike(c, e, '3d8+4', { forced: true }, { type: 'lightning', heavy: true, mult: resMult(c) }); e.addStatus('stun', 1); markTag('lightning', e.pos, c); } }, c);
+        }
+        return true; } },
+      { id: 'blink', key: 'C', lvl: 4, name: 'Blink', cd: 7, tags: ['blink'], desc: 'Teleport 9m, leaving a burst of your current element behind.', cast(c, T) {
+        const dir = flat((T.dir || c.forward()).clone()); const from = c.pos.clone(); Audio.play('shadow'); const el = ELEM[c.element || 'fire'];
+        burst(c.center(), el.color, 24, 4, 0.6, 0.3, 0); ring(from, 3.5, el.color);
+        for (const e of enemiesNear(from, 3.5, c.team)) { strike(c, e, '1d10+3', T, { type: el.type, knock: 8 }); if (c.element === 'frost') chill(e, 2, c); }
+        let dist = 0; for (let d = 9; d > 0; d -= 0.5) { const p = from.clone().addScaledVector(dir, d); if (!G.world.boxHits(p.x - 0.35, p.y + 0.3, p.z - 0.35, p.x + 0.35, p.y + 1.8, p.z + 0.35)) { dist = d; break; } }
+        c.pos.addScaledVector(dir, dist); c.vel.set(0, 0, 0); c.addStatus('invuln', 0.3); burst(c.center(), el.color, 24, 4, 0.6, 0.3, 0); markTag('blink', c.pos, c);
         if (c.t('phase_cloak')) c.addStatus('stealth', 1.5 * c.t('phase_cloak'));
-        wildSurge(c, this, T); return true; } },
-      { id: 'meteor', key: 'R', lvl: 6, name: 'Meteor', cd: 28, tags: ['fire'], desc: 'Call down a meteor that craters the ground.', cast(c, T) {
-        const p = aimPoint(c, T, 24); c.model.play('cast', 0.8); Audio.play('fire');
-        const n = c.t('meteor_swarm') ? 3 : 1;
-        for (let i = 0; i < n; i++) {
-          const pp = p.clone().add(V((Math.random() - 0.5) * (i ? 8 : 0), 0, (Math.random() - 0.5) * (i ? 8 : 0)));
-          telegraph(pp, 5, 1.1 + i * 0.35, 0xff5a1a, (q) => {
-            Audio.play('explode'); shake(0.9); G.post && (G.post.flash = 0.6);
-            const blocks = G.world.explode(q.x, q.y, q.z, 3.4, G.realm?.protect); debris(blocks);
-            burst(q, [0xff5a1a, 0xffd23a, 0x222222], 40, 12, 1.0, 0.3);
-            for (const e of enemiesNear(q, 5, c.team)) strike(c, e, '4d12+8', { forced: true, useFate: i === 0 }, { type: 'fire', knock: 16, heavy: true });
-            markTag('fire', q, c);
-          });
+        return true; } },
+      { id: 'cataclysm', key: 'R', lvl: 6, name: 'Cataclysm', cd: 28, tags: ['fire'], desc: 'Fire: Meteor. Frost: a Blizzard that slows and grinds foes down. Storm: a Tempest of lightning strikes.', cast(c, T) {
+        const el = c.element || 'fire'; resonate(c, el); this.tags = [ELEM[el].tag]; const p = aimPoint(c, T, 24); c.model.play('cast', 0.8);
+        if (el === 'fire') {
+          const n = c.t('meteor_swarm') ? 3 : 1; Audio.play('fire');
+          for (let i = 0; i < n; i++) { const pp = p.clone().add(V((Math.random() - 0.5) * (i ? 8 : 0), 0, (Math.random() - 0.5) * (i ? 8 : 0)));
+            telegraph(pp, 5, 1.1 + i * 0.35, 0xff7a2a, (q) => { Audio.play('explode'); shake(0.4); G.post && (G.post.flash = 0.2); beam(q.clone().add(V(8, 40, 4)), q, 0xff9a4a, 0.9, 0.3); burst(q, [0xff7a2a, 0xffd07a, 0x3a2a2a], 60, 10, 1.1, 0.5, 1); for (const e of enemiesNear(q, 5, c.team)) strike(c, e, '4d12+8', { forced: true, useFate: i === 0 }, { type: 'fire', knock: 14, heavy: true, mult: resMult(c) }); markTag('fire', q, c); }); }
+        } else if (el === 'frost') {
+          Audio.play('holy');
+          zone({ pos: p, radius: 6, life: 6, color: 0x9ad8ff, tag: 'frost', owner: c, opacity: 0.12, tick: (z) => { burst(z.pos.clone().add(V((Math.random() - .5) * 10, 5, (Math.random() - .5) * 10)), 0xe8f8ff, 8, 2, 1.4, 0.25, -6); for (const e of enemiesNear(z.pos, 6, c.team)) { dealDamage(c, e, 5 * c.pow * resMult(c), { type: 'frost', quiet: true, roll: { hit: true } }); chill(e, 1, c); if (Math.random() < 0.15) freeze(e, 1); } } });
+        } else {
+          Audio.play('thunder');
+          let k = 0; timed(3.2, (f, dt) => { f.acc = (f.acc || 0) + dt; if (f.acc > 0.4) { f.acc = 0; const foes = enemiesNear(p, 12, c.team); const e = foes[Math.floor(Math.random() * foes.length)]; const q = e ? e.pos.clone() : p.clone().add(V((Math.random() - .5) * 10, 0, (Math.random() - .5) * 10)); beam(q.clone().add(V(0, 28, 0)), q, 0xaef4ff, 0.3, 0.3, 2.5); Audio.play('zap'); burst(q, 0xaef4ff, 20, 5, 0.5, 0.3, 0); for (const x of enemiesNear(q, 2.5, c.team)) strike(c, x, '2d10+4', { forced: k++ < 1 }, { type: 'lightning', mult: resMult(c) }); markTag('lightning', q, c); } });
         }
-        wildSurge(c, this, T); return true; } },
+        return true; } },
     ],
     talents: [
       { id: 'focus', spec: 'core', tier: 0, max: 3, name: 'Arcane Focus', desc: '+8% spell damage per rank.' },
-      { id: 'inferno', spec: 'core', tier: 0, max: 3, name: 'Inferno', desc: 'Firebolt burns longer and explodes wider.' },
+      { id: 'inferno', spec: 'core', tier: 0, max: 3, name: 'Inferno', desc: 'Fire burns last longer and explode wider.' },
       { id: 'phase_cloak', spec: 'core', tier: 1, max: 2, name: 'Phase Cloak', desc: 'Blink grants stealth.' },
       { id: 'mana_flow', spec: 'core', tier: 1, max: 3, name: 'Mana Flow', desc: '-6% cooldowns per rank.' },
       { id: 'arc_jumps', spec: 'a', tier: 1, max: 3, name: 'Arc Jumps', desc: 'Chain Lightning jumps 2 more times per rank.' },
-      { id: 'static', spec: 'a', tier: 2, max: 3, name: 'Static Charge', desc: 'Each jump deals +10% more and slows.' },
-      { id: 'conductor', spec: 'a', tier: 2, max: 2, name: 'Conductor', desc: 'Basic bolts chain to 1 extra enemy per rank.' },
-      { id: 'meteor_swarm', spec: 'a', tier: 3, max: 1, name: 'Meteor Swarm', desc: 'Meteor calls down three meteors.' },
+      { id: 'static', spec: 'a', tier: 2, max: 3, name: 'Static Charge', desc: 'Each lightning jump deals +10% more and slows.' },
+      { id: 'conductor', spec: 'a', tier: 2, max: 2, name: 'Conductor', desc: 'Storm bolts chain to 1 extra enemy per rank.' },
+      { id: 'meteor_swarm', spec: 'a', tier: 3, max: 1, name: 'Meteor Swarm', desc: 'Fire Cataclysm calls down three meteors.' },
       { id: 'eye_of_storm', spec: 'a', tier: 4, max: 1, name: 'Eye of the Storm', keystone: true, desc: 'KEYSTONE — Chain Lightning jumps up to 12 times, but stops the moment it misses.' },
-      { id: 'chaos_bloom', spec: 'b', tier: 1, max: 3, name: 'Chaos Bloom', desc: 'Wild Surge rolls +2 per rank.' },
-      { id: 'tamed_chaos', spec: 'b', tier: 2, max: 2, name: 'Tamed Chaos', desc: 'Rank 2: surges can no longer backfire.' },
-      { id: 'lucky_star', spec: 'b', tier: 2, max: 2, name: 'Lucky Star', desc: 'Start fights with 1 extra Fate Die per rank.' },
-      { id: 'entropy', spec: 'b', tier: 3, max: 3, name: 'Entropy', desc: 'Glancing blows deal full damage (33% per rank).' },
-      { id: 'probability_engine', spec: 'b', tier: 4, max: 1, name: 'Probability Engine', keystone: true, desc: 'KEYSTONE — Sacrificed Fate Dice are rerolled back into your hand.' },
+      { id: 'deep_resonance', spec: 'b', tier: 1, max: 2, name: 'Deep Resonance', desc: 'Resonance can stack 1 more time per rank.' },
+      { id: 'permafrost', spec: 'b', tier: 2, max: 3, name: 'Permafrost', desc: 'Freezes last longer and Shatter hits harder.' },
+      { id: 'lucky_star', spec: 'b', tier: 2, max: 2, name: 'Star-Touched', desc: 'Start fights with 1 extra Fate Die per rank.' },
+      { id: 'entropy', spec: 'b', tier: 3, max: 3, name: 'Entropy', desc: 'Glancing blows deal more damage (22% per rank).' },
+      { id: 'triune', spec: 'b', tier: 4, max: 1, name: 'Triune Mastery', keystone: true, desc: 'KEYSTONE — Switching attunement refunds 1.5s of every cooldown.' },
     ],
-    specs: { a: 'Stormcaller', b: 'Chaos Weaver' },
-    resonance: { neon: { firebolt: 'Hot-Shot Blast', chain: 'Arc Reactor', blink: 'Speedster Flicker', meteor: 'Orbital Drop' }, asterion: { firebolt: 'Plasma Lance', chain: 'Ion Cascade', blink: 'Phase Jump', meteor: 'Decaying Orbit' } },
+    specs: { a: 'Stormcaller', b: 'Elementalist' },
+    resonance: { neon: { evocation: 'Hero-Bolt', conjuration: 'Power Surge', blink: 'Speedster Flicker', cataclysm: 'Orbital Drop' }, asterion: { evocation: 'Plasma Lance', conjuration: 'Field Collapse', blink: 'Phase Jump', cataclysm: 'Decaying Orbit' } },
     resonanceBonus: 'emberwood',
   },
 
   // ───────────────────────────────── ARTIFICER ───────────────────────────────
   artificer: {
-    name: 'Artificer', role: 'Gadgeteer', color: '#e0a030',
-    blurb: 'Builds the fight around them: turrets, grenades and a repair bot. Kills drop Scrap; 3 Scrap instantly recharges your turret.',
+    name: 'Runesmith', role: 'Siege & wards', color: '#e0a030',
+    blurb: 'Sets the battlefield: ballista wards, blast runes and a mending totem, then right-clicks to DETONATE everything at once. Kills drop Scrap; 3 Scrap recharges your ballista.',
     stats: { hp: 95, hpPer: 13, ac: 14, speed: 6.2, atk: 4 },
     skill: { tech: 5, arcana: 3, insight: 1 },
-    model: { weapon: 'wrench', hat: 'goggles', extras: ['backpack', 'apron'], colors: { body: 0x3a6a8a, legs: 0x5a4a3a, accent: 0xd0a040, hair: 0xd06a20 } },
-    passive: { name: 'Scrap', desc: 'Enemies you defeat drop Scrap. At 3 Scrap, Deploy Turret recharges instantly.' },
-    basic: { name: 'Rivet Gun', cd: 0.3, range: 20, cast(c, T) {
+    model: { weapon: 'wrench', hat: 'goggles', heroic: 1.1, bulk: 1.08, extras: ['backpack', 'shoulder', 'apron'], colors: { body: 0x4a5a6a, legs: 0x4a3a2a, accent: 0xc88a3a, hair: 0xa04a1a } },
+    passive: { name: 'Salvage', desc: 'Enemies you defeat drop Scrap. At 3 Scrap, your Ballista Ward recharges instantly.' },
+    mechanic: { name: 'Detonate', key: 'RMB', desc: 'Detonate every ward, rune and totem you have placed. Wards explode, runes erupt at 150%, totems release a wave of healing. Detonated wards refund 40% of their cooldown.', press(c) { return detonate(c); } },
+    basic: { name: 'Runic Bolt', cd: 0.3, range: 20, cast(c, T) {
       faceAim(c, T); c.model.play('shoot', 0.2); Audio.play('laser');
       bolt(c, T, { color: 0xffd060, size: 0.16, speed: 36, onHit: (e) => strike(c, e, '1d6+1', T, { type: 'tech', word: 'tech' }) });
       return true; } },
     abilities: [
-      { id: 'turret', key: 'Q', lvl: 1, name: 'Deploy Turret', cd: 12, tags: ['turret'], desc: 'Build an auto-turret that fires for 14s.', cast(c, T) {
+      { id: 'turret', key: 'Q', lvl: 1, name: 'Ballista Ward', cd: 12, tags: ['turret'], desc: 'Raise a runic ballista that fires for 14s.', cast(c, T) {
         const p = c.pos.clone().add(c.forward().multiplyScalar(1.6)); p.y = G.world.groundBelow(p.x, p.y + 2, p.z);
         const n = c.t('twin_turrets') ? 2 : 1; Audio.play('build');
         for (let i = 0; i < n; i++) {
@@ -238,23 +250,13 @@ export const CLASSES = {
           markTag('turret', pp, c);
         }
         return true; } },
-      { id: 'grenade', key: 'E', lvl: 2, name: 'Arc Grenade', cd: 7, tags: ['grenade'], desc: 'Lob a grenade that explodes and shocks enemies.', cast(c, T) {
-        faceAim(c, T); c.model.play('attack', 0.3);
-        const p = aimPoint(c, T, 18); const from = c.center().add(V(0, 0.5, 0));
-        const dist = Math.max(3, from.distanceTo(p)); const dir = p.clone().sub(from); dir.y = 0; dir.normalize();
-        const spd = Math.sqrt(dist * 22) ; const v = dir.multiplyScalar(spd * 0.72); v.y = spd * 0.72;
-        const boom = (q) => {
-          Audio.play('explode'); shake(0.35); burst(q, [0x80e0ff, 0xffffff, 0x3060ff], 36, 9, 0.7, 0.25); ring(q, 4, 0x80e0ff);
-          for (const e of enemiesNear(q, 3.8 + c.t('bigger_boom') * 0.8, c.team)) { strike(c, e, '2d8+3', T, { type: 'lightning', knock: 9 }); e.addStatus('stun', 0.6); }
-          if (c.t('demolition')) debris(G.world.explode(q.x, q.y, q.z, 2, G.realm?.protect));
-          markTag('grenade', q, c);
-          if (c.gearFlag('grenade_cluster') && !q.cluster) for (let i = 0; i < 3; i++) { const qq = q.clone().add(V((Math.random() - .5) * 6, 0, (Math.random() - .5) * 6)); qq.cluster = true; setTimeout(() => boom(qq), 250 + i * 150); }
-        };
-        spawnProjectile({ from, dir: v, speed: v.length(), gravity: 22, color: 0x60c0ff, size: 0.3, owner: c, life: 3, onHit: (e, q) => boom(q), onWorld: (q) => boom(q), onExpire: boom });
-        return true; } },
-      { id: 'bot', key: 'RMB', lvl: 4, name: 'Repair Bot', cd: 16, tags: ['bot'], desc: 'A hovering bot heals allies near you for 12s.', cast(c, T) {
-        Audio.play('build');
-        new Minion('bot', c, c.pos.clone().add(V(0, 1.5, 0)), { life: 12 + c.t('long_battery') * 4, heal: 4 * (1 + c.t('field_medic') * 0.25), shield: !!c.t('nanite_cloud') });
+      { id: 'grenade', key: 'E', lvl: 2, name: 'Blast Rune', cd: 5, tags: ['grenade'], desc: 'Inscribe a rune on the ground (up to 3). It erupts when an enemy steps on it, or when you Detonate.', cast(c, T) {
+        faceAim(c, T); c.model.play('cast', 0.3); Audio.play('build');
+        const p = aimPoint(c, T, 16); p.y = G.world.groundBelow(p.x, p.y + 3, p.z);
+        placeRune(c, p); return true; } },
+      { id: 'bot', key: 'C', lvl: 4, name: 'Mending Totem', cd: 16, tags: ['bot'], desc: 'Plant a totem that heals allies within 7m for 12s. Detonating it releases a burst of healing instead.', cast(c, T) {
+        Audio.play('build'); const p = c.pos.clone().add(c.forward().multiplyScalar(1.5)); p.y = G.world.groundBelow(p.x, p.y + 2, p.z);
+        new Minion('bot', c, p, { life: 12 + c.t('long_battery') * 4, heal: 4 * (1 + c.t('field_medic') * 0.25), shield: !!c.t('nanite_cloud'), stationary: true });
         markTag('bot', c.pos, c); return true; } },
       { id: 'overclock', key: 'R', lvl: 6, name: 'Overclock', cd: 35, tags: ['overclock'], desc: 'The party gains haste for 6s, your gadgets upgrade, and cooldowns drop by 50%.', cast(c, T) {
         Audio.play('levelup'); ring(c.pos, 12, 0xffd060, 0.6);
@@ -264,23 +266,23 @@ export const CLASSES = {
     ],
     onKill(c) { c.scrap = (c.scrap || 0) + 1; if (c.scrap >= 3) { c.scrap = 0; c.cds.turret = 0; popText(c.head(), 'SCRAP! Turret ready', 'info', { color: '#ffd060' }); } },
     talents: [
-      { id: 'sturdy_build', spec: 'core', tier: 0, max: 3, name: 'Sturdy Build', desc: 'Turrets last 4s longer per rank.' },
-      { id: 'bigger_boom', spec: 'core', tier: 0, max: 3, name: 'Bigger Boom', desc: 'Grenade radius increased.' },
-      { id: 'long_battery', spec: 'core', tier: 1, max: 2, name: 'Long Battery', desc: 'Repair Bot lasts 4s longer per rank.' },
+      { id: 'sturdy_build', spec: 'core', tier: 0, max: 3, name: 'Sturdy Build', desc: 'Ballista Wards last 4s longer per rank.' },
+      { id: 'bigger_boom', spec: 'core', tier: 0, max: 3, name: 'Wider Glyphs', desc: 'Blast Rune radius increased.' },
+      { id: 'long_battery', spec: 'core', tier: 1, max: 2, name: 'Deep Roots', desc: 'Mending Totem lasts 4s longer per rank.' },
       { id: 'tinkerer', spec: 'core', tier: 1, max: 3, name: 'Tinkerer', desc: '+5% max HP and +1 AC per rank.' },
-      { id: 'calibrated', spec: 'a', tier: 1, max: 3, name: 'Calibrated Optics', desc: 'Turret damage +20% per rank.' },
-      { id: 'twin_turrets', spec: 'a', tier: 2, max: 1, name: 'Twin Turrets', desc: 'Deploy two turrets at once.' },
-      { id: 'demolition', spec: 'a', tier: 2, max: 1, name: 'Demolition', desc: 'Grenades destroy terrain.' },
-      { id: 'scrapper', spec: 'a', tier: 3, max: 3, name: 'Scrapper', desc: 'Rivet Gun damage +15% per rank.' },
-      { id: 'siege_mode', spec: 'a', tier: 4, max: 1, name: 'Siege Mode', keystone: true, desc: 'KEYSTONE — Turrets become mortars that fire explosive arcing shells.' },
-      { id: 'field_medic', spec: 'b', tier: 1, max: 3, name: 'Field Medic', desc: 'Repair Bot heals +25% per rank.' },
-      { id: 'reinforced', spec: 'b', tier: 2, max: 3, name: 'Reinforced Plating', desc: 'Allies near your bot take 5% less damage per rank.' },
-      { id: 'quick_fix', spec: 'b', tier: 2, max: 2, name: 'Quick Fix', desc: 'Repair Bot cooldown -3s per rank.' },
+      { id: 'calibrated', spec: 'a', tier: 1, max: 3, name: 'True Sights', desc: 'Ballista damage +20% per rank.' },
+      { id: 'twin_turrets', spec: 'a', tier: 2, max: 1, name: 'Twin Wards', desc: 'Raise two ballistae at once.' },
+      { id: 'demolition', spec: 'a', tier: 2, max: 1, name: 'Chain Reaction', desc: 'Erupting runes set off other runes and wards nearby.' },
+      { id: 'scrapper', spec: 'a', tier: 3, max: 3, name: 'Etched Bolts', desc: 'Runic Bolt damage +15% per rank.' },
+      { id: 'siege_mode', spec: 'a', tier: 4, max: 1, name: 'Siege Engine', keystone: true, desc: 'KEYSTONE — Ballistae become trebuchets that lob exploding stones.' },
+      { id: 'field_medic', spec: 'b', tier: 1, max: 3, name: 'Verdant Glyphs', desc: 'Mending Totem heals +25% per rank.' },
+      { id: 'reinforced', spec: 'b', tier: 2, max: 3, name: 'Warding Ring', desc: 'Allies near your totem take 5% less damage per rank.' },
+      { id: 'quick_fix', spec: 'b', tier: 2, max: 2, name: 'Quick Carving', desc: 'Mending Totem cooldown -3s per rank.' },
       { id: 'jury_rig', spec: 'b', tier: 3, max: 1, name: 'Jury Rig', desc: 'Revive downed allies twice as fast.' },
-      { id: 'nanite_cloud', spec: 'b', tier: 4, max: 1, name: 'Nanite Cloud', keystone: true, desc: 'KEYSTONE — Your Repair Bot also shields every ally it heals.' },
+      { id: 'nanite_cloud', spec: 'b', tier: 4, max: 1, name: 'Aegis Totem', keystone: true, desc: 'KEYSTONE — Your totem also shields every ally it heals.' },
     ],
-    specs: { a: 'Gunsmith', b: 'Field Engineer' },
-    resonance: { emberwood: { turret: 'Clockwork Ballista', grenade: 'Alchemist Flask', bot: 'Brass Homunculus', overclock: 'Runic Overdrive' }, neon: { turret: 'Sentry Gun', grenade: 'EMP Charge', bot: 'Medi-Drone', overclock: 'Suit Overload' } },
+    specs: { a: 'Siegewright', b: 'Wardkeeper' },
+    resonance: { neon: { turret: 'Sentry Gun', grenade: 'Proximity Mine', bot: 'Medi-Beacon', overclock: 'Suit Overload' }, asterion: { turret: 'Pulse Turret', grenade: 'Plasma Mine', bot: 'Nanite Pylon', overclock: 'Reactor Overdrive' } },
     resonanceBonus: 'asterion',
   },
 
@@ -290,8 +292,9 @@ export const CLASSES = {
     blurb: 'Keeps everyone standing, then hits things with a mace. Faith builds as you heal; at full Faith your next heal also smites nearby enemies.',
     stats: { hp: 105, hpPer: 15, ac: 15, speed: 6.0, atk: 4 },
     skill: { insight: 5, persuasion: 4, arcana: 2 },
-    model: { weapon: 'mace', hat: 'halo', extras: ['robe', 'emblem'], colors: { body: 0xf0e8d0, legs: 0xc0b090, accent: 0xe0b040, hair: 0x8a5a30, emblem: 0xe0b040 } },
+    model: { weapon: 'mace', hat: 'halo', heroic: 1.1, extras: ['robe', 'plate', 'shield', 'cape'], colors: { body: 0xece4d0, legs: 0xc0b090, accent: 0xd8a840, hair: 0x8a5a30, robe: 0xece4d0, cape: 0xd8c890, shield: 0xece4d0 } },
     passive: { name: 'Faith', desc: 'Healing builds Faith. At 100 Faith, your next heal also blasts enemies with holy light.' },
+    mechanic: { name: 'Tether', key: 'RMB', desc: 'Bind a light-tether to the ally nearest your aim. They take 15% less damage and regenerate, and 30% of all damage you deal heals them.', press(c) { const t = tetherTarget(c); setTether(c, t); return true; } },
     basic: { name: 'Blessed Mace', cd: 0.55, range: 2.4, cast(c, T) {
       faceAim(c, T); lunge(c, 2); c.model.play('attack', 0.3); Audio.play('swing');
       c.maceCount = (c.maceCount || 0) + 1;
@@ -314,7 +317,7 @@ export const CLASSES = {
           if (c.t('consecrate')) for (const e of enemiesNear(z.pos, z.radius, c.team)) dealDamage(c, e, 2 * c.t('consecrate') * c.pow, { type: 'holy', quiet: true, roll: { hit: true } });
         } });
         markTag('sanctuary', p, c); return true; } },
-      { id: 'smite', key: 'RMB', lvl: 4, name: 'Guiding Bolt', cd: 6, tags: ['holy'], desc: 'A radiant bolt that marks the target: attacks on it crit on 16+.', cast(c, T) {
+      { id: 'smite', key: 'C', lvl: 4, name: 'Guiding Bolt', cd: 6, tags: ['holy'], desc: 'A radiant bolt that marks the target: attacks on it crit on 16+.', cast(c, T) {
         faceAim(c, T); c.model.play('shoot', 0.3); Audio.play('holy');
         bolt(c, T, { color: 0xfff080, size: 0.36, speed: 30, homing: 3, onHit: (e) => { strike(c, e, '3d6+3', T, { type: 'holy', heavy: true, mult: 1 + c.t('zealot') * 0.12 }); e.addStatus('marked_crit', 5); markTag('holy', e.pos, c); } });
         return true; } },
@@ -353,11 +356,20 @@ export const CLASSES = {
     blurb: 'Hits from the shadows. Attacks from stealth or from behind crit on 15+. Hand them your best Fate Die and watch things disappear.',
     stats: { hp: 85, hpPer: 12, ac: 14, speed: 7.2, atk: 6 },
     skill: { stealth: 5, persuasion: 3, insight: 3, athletics: 2 },
-    model: { weapon: 'daggers', hat: 'hood', extras: ['cape'], colors: { body: 0x2a4a3a, legs: 0x1a2a22, accent: 0x40c080, hat: 0x1a3a2a, cape: 0x122a1e } },
-    passive: { name: 'Sneak Attack', desc: 'Attacks from stealth or from behind crit on a roll of 15+.' },
+    model: { weapon: 'daggers', hat: 'hood', extras: ['cape'], colors: { body: 0x2a2e2a, legs: 0x1e2220, accent: 0x6a4a30, hat: 0x22302a, cape: 0x18221c, boots: 0x2a1a12 } },
+    passive: { name: 'Sneak Attack & Combo', desc: 'Attacks from stealth or from behind crit on 15+. Hits build Combo (max 5), which Eviscerate spends.' },
+    mechanic: { name: 'Tumble', key: 'RMB', desc: 'Roll through your target and come up behind it (2 charges). Gain 1 Combo; your next hit within 1.5s is a guaranteed crit.', press(c, T) {
+      c.tumbleCharges = c.tumbleCharges ?? 2; if (c.tumbleCharges <= 0) { Audio.play('miss'); return false; }
+      c.tumbleCharges--; setTimeout(() => (c.tumbleCharges = Math.min(2, (c.tumbleCharges || 0) + 1)), 4000);
+      const t = T.target && !T.target.dead && T.target.pos.distanceTo(c.pos) < 8 ? T.target : null;
+      const dest = t ? t.pos.clone().sub(t.forward().multiplyScalar(1.4)) : c.pos.clone().add(flat((T.dir || c.forward()).clone()).multiplyScalar(5));
+      const d = dest.sub(c.pos); d.y = 0; c.knock.add(d.multiplyScalar(4.2)); c.addStatus('invuln', 0.4); c.addStatus('dodge', 0.4); c.addStatus('tumbled', 1.5);
+      c.model.play('roll', 0.35); Audio.play('dash'); addCombo(c, 1);
+      if (t) setTimeout(() => { c.yaw = Math.atan2(t.pos.x - c.pos.x, t.pos.z - c.pos.z); }, 280);
+      return true; } },
     basic: { name: 'Twin Daggers', cd: 0.3, range: 2.2, cast(c, T) {
       faceAim(c, T); lunge(c, 2.5); c.model.play(Math.random() < 0.5 ? 'attack' : 'thrust', 0.2); Audio.play('swing');
-      meleeHits(c, 2.2, 100, (e) => { const behind = e.forward().dot(c.forward()) > 0.3; strike(c, e, '1d6+2', { ...T, fromBehind: behind }, { type: 'slash', word: 'shadow' }); });
+      meleeHits(c, 2.2, 100, (e) => { const behind = e.forward().dot(c.forward()) > 0.3; const tum = c.has('tumbled'); if (tum) c.removeStatus('tumbled'); const r = strike(c, e, '1d6+2', { ...T, fromBehind: behind, autoCrit: tum }, { type: 'slash', word: 'shadow' }); if (r && r.hit) addCombo(c, 1); });
       if (c.has('stealth') && !c.t('shadow_dance')) c.removeStatus('stealth');
       return true; } },
     abilities: [
@@ -368,7 +380,7 @@ export const CLASSES = {
         if (!G.world.boxHits(behind.x - 0.3, behind.y, behind.z - 0.3, behind.x + 0.3, behind.y + 1.8, behind.z + 0.3)) c.pos.copy(behind); else c.pos.copy(t.pos).add(V(0.8, 0.2, 0));
         c.faceTo(t.pos); c.yaw = Math.atan2(t.pos.x - c.pos.x, t.pos.z - c.pos.z); c.model.play('thrust', 0.3);
         const low = t.hp / t.maxHp < 0.25 && c.t('assassinate');
-        strike(c, t, '3d6+4', { ...T, autoCrit: true, fromBehind: true }, { type: 'slash', word: 'shadow', heavy: true, mult: low ? 1.5 : 1 });
+        strike(c, t, '3d6+4', { ...T, autoCrit: true, fromBehind: true }, { type: 'slash', word: 'shadow', heavy: true, mult: low ? 1.5 : 1 }); addCombo(c, 2);
         if (c.gearFlag('shadow_double')) setTimeout(() => { if (!t.dead) strike(c, t, '3d6+4', { autoCrit: true, useFate: false }, { type: 'slash', word: 'shadow' }); }, 180);
         markTag('shadow', t.pos, c); return true; } },
       { id: 'smoke', key: 'E', lvl: 2, name: 'Smoke Bomb', cd: 12, tags: ['smoke'], desc: 'Smoke cloud: allies inside are stealthed, enemies inside are blinded.', cast(c, T) {
@@ -381,16 +393,13 @@ export const CLASSES = {
         } });
         if (c.t('decoy')) new Minion('decoy', c, p.clone(), { life: 6, hp: 60 * c.pow });
         c.addStatus('stealth', 2); markTag('smoke', p, c); return true; } },
-      { id: 'knives', key: 'RMB', lvl: 4, name: 'Fan of Knives', cd: 7, tags: ['knives'], desc: 'Throw a fan of 7 knives that make enemies bleed.', cast(c, T) {
-        faceAim(c, T); c.model.play('spin', 0.3); Audio.play('arrow');
-        const base = aimDir(c, T); base.y = Math.max(-0.2, Math.min(0.2, base.y));
-        const n = 7 + c.t('more_knives') * 2;
-        for (let i = 0; i < n; i++) {
-          const a = (i - (n - 1) / 2) * 0.13; const d = base.clone().applyAxisAngle(V(0, 1, 0), a);
-          spawnProjectile({ from: c.center(), dir: d, speed: 28, color: 0xd0d8e0, size: 0.14, owner: c, life: 0.8, onHit: (e) => {
-            strike(c, e, '1d8+2', T, { type: 'slash', quiet: true });
-            e.addStatus('bleed', 4, { every: 0.5, onTick: (x) => dealDamage(c, x, 1.5 * c.pow * (1 + c.t('hemorrhage') * 0.33), { quiet: true, roll: { hit: true } }) }); markTag('knives', e.pos, c); } });
-        }
+      { id: 'eviscerate', key: 'C', lvl: 4, name: 'Eviscerate', cd: 3, tags: ['knives'], desc: 'Finisher: spends all Combo. Damage grows with each point; at 5 Combo it is a guaranteed crit that leaves the target bleeding.', cast(c, T) {
+        const cp = c.combo || 0; if (cp < 1) { popText(c.head(), 'No combo', 'miss'); return false; }
+        const t = T.target && !T.target.dead && T.target.pos.distanceTo(c.pos) < 4 ? T.target : nearestEnemy(c, c.team, 3.5); if (!t) return false;
+        faceAim(c, { target: t }); c.model.play('thrust', 0.3); Audio.play('bigHit'); c.combo = 0;
+        strike(c, t, '1d8+3', { ...T, autoCrit: cp >= 5 }, { type: 'slash', heavy: true, mult: 1 + cp * 0.6 });
+        if (cp >= 3 || c.t('more_knives')) t.addStatus('bleed', 4, { every: 0.5, onTick: (x) => dealDamage(c, x, (1.5 + c.t('more_knives')) * c.pow * (1 + c.t('hemorrhage') * 0.33), { quiet: true, roll: { hit: true } }) });
+        burst(t.center(), 0xc02a2a, 10, 3, 0.4, 0.2, -4); markTag('knives', t.pos, c);
         return true; } },
       { id: 'deathmark', key: 'R', lvl: 6, name: 'Death Mark', cd: 30, tags: ['shadow'], desc: 'Mark a target. After 4s it takes all the damage it took again, plus 50%.', cast(c, T) {
         const t = T.target && !T.target.dead ? T.target : nearestEnemy(c, c.team, 20); if (!t) return false;
@@ -401,7 +410,7 @@ export const CLASSES = {
     onKill(c) { if (c.t('vanishing_act')) c.addStatus('stealth', 3); if (c.t('loaded_dice') && G.combat.active && G.combat.dice.length < 9) { G.combat.dice.push(Math.max(5, d20())); popText(c.head(), '+1 FATE DIE', 'fate'); } },
     talents: [
       { id: 'quick_hands', spec: 'core', tier: 0, max: 3, name: 'Quick Hands', desc: 'Attack speed +8% per rank.' },
-      { id: 'more_knives', spec: 'core', tier: 0, max: 3, name: 'More Knives', desc: 'Fan of Knives throws 2 more per rank.' },
+      { id: 'more_knives', spec: 'core', tier: 0, max: 3, name: 'Serrated Edge', desc: 'Eviscerate always causes bleeding, and bleeds harder per rank.' },
       { id: 'evasion', spec: 'core', tier: 1, max: 3, name: 'Evasion', desc: 'Dash cooldown -15% per rank.' },
       { id: 'poison', spec: 'core', tier: 1, max: 3, name: 'Poisoned Edge', desc: 'Basic attacks poison.' },
       { id: 'assassinate', spec: 'a', tier: 1, max: 3, name: 'Assassinate', desc: 'Crits deal +25% per rank; Shadowstep deals +50% to foes below 25% HP.' },
@@ -426,8 +435,16 @@ export const CLASSES = {
     blurb: 'A bow and a loyal wolf. Consecutive hits on the same prey stack Hunter\'s Focus for more damage.',
     stats: { hp: 90, hpPer: 13, ac: 14, speed: 6.8, atk: 5 },
     skill: { survival: 5, athletics: 3, insight: 3 },
-    model: { weapon: 'bow', hat: 'hood', extras: ['quiver', 'cape'], colors: { body: 0x4a6a2a, legs: 0x5a4020, accent: 0x8a6a3a, hat: 0x3a5a22, cape: 0x2a4018 } },
+    model: { weapon: 'bow', sleeves: true, extras: ['quiver', 'cape'], colors: { body: 0x3e5a2a, legs: 0x5a4020, accent: 0x8a6a3a, cape: 0x2e4420, hair: 0x6a3a1a } },
     passive: { name: "Hunter's Focus", desc: 'Each consecutive hit on the same target adds +6% damage (up to 5 stacks).' },
+    mechanic: { name: 'Aimed Shot', key: 'RMB', hold: true, desc: 'Hold to draw your bow, release to loose. A full draw pierces everything in its path and crits on 14+.',
+      start(c) { c.drawT = 0; c.addStatus('drawing', 99); Audio.play('arrow'); },
+      tick(c, dt) { c.drawT = Math.min(1.1, (c.drawT || 0) + dt); c.model.state = 'draw'; c.model.stateT = 1; if (c.drawT >= 1.1 && !c._drawReady) { c._drawReady = true; Audio.play('diceLand'); burst(c.center(), 0xfff0a0, 10, 2, 0.4, 0.2, 0); } },
+      end(c, T) { c.removeStatus('drawing'); c._drawReady = false; const k = Math.min(1, (c.drawT || 0) / 1.1); c.model.play('shoot', 0.25); Audio.play('arrow');
+        if (k < 0.15) return;
+        faceAim(c, T); const full = k >= 1;
+        bolt(c, T, { color: full ? 0xfff0a0 : 0xe8d8a0, size: full ? 0.2 : 0.14, speed: 70, arrow: true, pierce: full ? 99 : 0, onHit: (e) => { strike(c, e, '2d8+4', { ...T, bonus: full ? 4 : 0, critFloor: full ? 14 : null }, { type: 'pierce', mult: 0.6 + 1.8 * k, heavy: full }); if (full) burst(e.center(), 0xfff0a0, 12, 4, 0.4, 0.25, 0); } });
+        c.cds.basic = 0.3; } },
     basic: { name: 'Longbow', cd: 0.5, range: 28, cast(c, T) {
       faceAim(c, T); c.model.play('shoot', 0.3); Audio.play('arrow');
       bolt(c, T, { color: 0xe8d8a0, size: 0.12, speed: 44, pierce: c.t('piercing') ? 2 : 0, onHit: (e) => {
@@ -453,7 +470,7 @@ export const CLASSES = {
           for (const e of enemiesNear(q, 3.5 + c.t('bigger_traps'), c.team)) { e.addStatus('snare', 3 + c.t('bigger_traps') * 0.5); strike(c, e, '1d8', { useFate: false }, { type: 'pierce' }); markTag('snare', e.pos, c); }
         }, c);
         return true; } },
-      { id: 'pounce', key: 'RMB', lvl: 1, name: 'Command: Pounce', cd: 6, tags: ['beast'], desc: 'Your wolf leaps on the target, dealing heavy damage and stunning it.', cast(c, T) {
+      { id: 'pounce', key: 'C', lvl: 1, name: 'Command: Pounce', cd: 6, tags: ['beast'], desc: 'Your wolf leaps on the target, dealing heavy damage and stunning it.', cast(c, T) {
         const t = T.target && !T.target.dead ? T.target : nearestEnemy(c, c.team, 20); if (!t) return false;
         const pets = G.entities.filter((e) => e.isMinion && e.kind === 'wolf' && e.owner === c && !e.dead);
         if (!pets.length) { summonPet(c); return true; }
@@ -487,6 +504,54 @@ export const CLASSES = {
 
 export const CLASS_IDS = Object.keys(CLASSES);
 
+function placeRune(c, p) {
+  c.runes = (c.runes || []).filter((r) => !r.done); if (c.runes.length >= 3) erupt(c, c.runes.shift(), 1);
+  const r = { pos: p.clone(), owner: c, t: 0, done: false };
+  const fx = zone({ pos: p, radius: 1.6 + c.t('bigger_boom') * 0.3, life: 60, color: 0xffb04a, opacity: 0.1, tag: 'grenade', owner: c, tick: (z) => {
+    if (r.done) { z.t = z.life; return; }
+    r.t += 0.25; if (r.t < 0.6) return;
+    if (enemiesNear(r.pos, 2.2 + c.t('bigger_boom') * 0.4, c.team).length) erupt(c, r, 1);
+  } });
+  r.fx = fx; c.runes.push(r); markTag('grenade', p, c);
+}
+function erupt(c, r, mult) {
+  if (r.done) return; r.done = true; if (r.fx) r.fx.t = r.fx.life;
+  const q = r.pos; Audio.play('explode'); shake(0.15); burst(q.clone().add(V(0, 0.5, 0)), [0xffb04a, 0xfff0c0], 40, 7, 0.7, 0.4, 1); ring(q, 4, 0xffb04a);
+  for (const e of enemiesNear(q, 3.8 + c.t('bigger_boom') * 0.6, c.team)) { strike(c, e, '2d8+4', { useFate: false }, { type: 'blast', knock: 9, mult }); e.addStatus('stun', 0.8); }
+  if (c.t('demolition')) for (const o of (c.runes || [])) if (!o.done && o.pos.distanceTo(q) < 7) setTimeout(() => erupt(c, o, mult), 150);
+  markTag('grenade', q, c);
+}
+function detonate(c) {
+  const mine = G.entities.filter((e) => e.isMinion && e.owner === c && !e.dead && (e.kind === 'turret' || e.kind === 'bot'));
+  const runes = (c.runes || []).filter((r) => !r.done);
+  if (!mine.length && !runes.length) { popText(c.head(), 'Nothing to detonate', 'miss'); return false; }
+  runes.forEach((r, i) => setTimeout(() => erupt(c, r, 1.5), i * 90));
+  for (const m of mine) {
+    const q = m.pos.clone(); const f = Math.max(0.3, Math.min(1, m.life / 14));
+    if (m.kind === 'turret') { Audio.play('explode'); burst(q.clone().add(V(0, 1, 0)), [0xffb04a, 0xffffff], 40, 8, 0.8, 0.4, 1); ring(q, 5, 0xffb04a); for (const e of enemiesNear(q, 4.5, c.team)) strike(c, e, '2d10+4', { useFate: false }, { type: 'blast', knock: 12, heavy: true, mult: 1 + f }); c.cds.turret = Math.max(0, (c.cds.turret || 0) * 0.6); }
+    else { Audio.play('heal'); ring(q, 8, 0x7aff9a); for (const a of alliesNear(q, 8, c.team)) heal(c, a, a.maxHp * 0.18 * (1 + f)); }
+    m.life = 0;
+  }
+  return true;
+}
+function addCombo(c, n) { c.combo = Math.min(5, (c.combo || 0) + n); }
+function tetherTarget(c) {
+  const d = (c.aimDir || c.forward()).clone(); let best = null, bs = Infinity;
+  for (const a of G.party) { if (a === c || a.dead) continue; const to = a.pos.clone().sub(c.pos); const dist = to.length(); if (dist > 25) continue; const s = to.normalize().angleTo(d) * 10 + dist * 0.1; if (s < bs) { bs = s; best = a; } }
+  return best || c;
+}
+export function setTether(c, t) {
+  if (c.tether === t) return; c.tether = t; Audio.play('heal'); popText(t.head(), 'Tethered', 'heal');
+  if (c._tetherFx) c._tetherFx.dead = true;
+  const fx = timed(99999, (f, dt) => {
+    if (fx.dead || c.dead || t.dead || c.tether !== t) return false;
+    t.addStatus('tethered', 0.5, { src: c }); if (!t.downed && !c.downed) t.hp = Math.min(t.maxHp, t.hp + t.maxHp * 0.012 * dt);
+    const a = c.center(), b = t.center(); f.line.geometry.setFromPoints([a, a.clone().lerp(b, 0.5).add(V(0, 0.5, 0)), b]);
+  });
+  const line = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: new THREE.Color(0xffe890).multiplyScalar(3), toneMapped: false, transparent: true, opacity: 0.8 }));
+  G.scene.add(line); fx.line = line; const od = fx.dispose.bind(fx); fx.dispose = () => { G.scene.remove(line); line.geometry.dispose(); od(); };
+  c._tetherFx = fx;
+}
 function gritMult(c) { if ((c.grit || 0) >= 100) { c.grit = 0; popText(c.head(), 'GRIT!', 'fate'); return 1.5; } return 1; }
 function lowestAlly(c, range) {
   let best = null, bv = 1;

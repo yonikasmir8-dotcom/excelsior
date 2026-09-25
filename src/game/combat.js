@@ -107,7 +107,7 @@ export function attackRoll(att, tgt, T = {}) {
   const C = G.combat;
   if (att.team === 'party' && !att.isMinion && T.useFate !== false && C.armed !== null && C.dice[C.armed] !== undefined && att === activeHero()) {
     roll = C.dice[C.armed]; if (roll === 1 && G.party.some((h) => h.gearFlag?.('snake_eyes'))) roll = 20; C.dice.splice(C.armed, 1); C.sel = Math.min(C.sel, Math.max(0, C.dice.length - 1)); C.armed = null; fate = true;
-    popText(att.head(), `FATE ${roll}`, 'fate');
+    popText(att.head(), `Fate · ${roll}`, 'fate');
   } else if (T.preRoll) roll = T.preRoll;
   else roll = d20();
   if (T.forced) roll = Math.max(roll, d20(), 10);
@@ -116,6 +116,8 @@ export function attackRoll(att, tgt, T = {}) {
   if (att.t && att.t('deadeye') && roll >= 18) critMin = 18;
   if (att.team === 'party' && (att.has('stealth') || T.fromBehind) && att.classId === 'rogue') critMin = Math.min(critMin, 15);
   if (tgt.has('marked_crit')) critMin = Math.min(critMin, 16);
+  if (T.critFloor) critMin = Math.min(critMin, T.critFloor);
+  if (att.has('riposte')) { T.autoCrit = true; att.removeStatus('riposte'); }
   if (T.autoCrit) roll = Math.max(roll, critMin);
   const nat = roll;
   const total = roll + att.atk + (T.bonus || 0);
@@ -137,7 +139,7 @@ export function strike(att, tgt, base, T = {}, opts = {}) {
   else if (r.fumble) amt = 0;
   else if (r.glance) amt *= (opts.glance ?? 0.35) + (att.t ? att.t('entropy') * 0.22 : 0);
   dealDamage(att, tgt, amt, { ...opts, roll: r });
-  if (r.fumble && att.team === 'party' && !opts.quiet) { popText(att.head(), 'NAT 1!', 'fumble'); Audio.play('fumble'); att.addStatus('stun', 0.35); addStyle(-10); }
+  if (r.fumble && att.team === 'party' && !opts.quiet) { popText(att.head(), 'Fumble', 'miss'); Audio.play('miss'); }
   return r;
 }
 
@@ -150,10 +152,24 @@ const WORDS = {
 export function dealDamage(src, tgt, amt, opts = {}) {
   if (tgt.dead || tgt.downed || tgt.invuln || tgt.has('invuln')) return 0;
   const r = opts.roll || { hit: true };
-  if (tgt.has('dodge') && !opts.unavoidable) { popText(tgt.head(), 'DODGE', 'miss'); return 0; }
+  // Fighter guard & parry
+  if (tgt.has('guarding') && src && src !== tgt && !opts.unavoidable) {
+    const to = src.pos.clone().sub(tgt.pos); to.y = 0; to.normalize();
+    if (to.dot(tgt.forward()) > 0.1) {
+      if (G.time - (tgt.guardStart || -9) < 0.35) {
+        popText(tgt.head(), 'Parry!', 'fate'); Audio.play('block'); ring(tgt.pos, 2.5, 0xffd870, 0.3); burst(tgt.center().add(tgt.forward().multiplyScalar(0.6)), [0xfff0c0, 0xffd870], 16, 5, 0.3, 0.2, 0);
+        src.addStatus('stun', src.isBoss ? 0.6 : 1.4); tgt.addStatus('riposte', 3); tgt.grit = Math.min(100, (tgt.grit || 0) + 35); addMeter(8); hitstop(0.08);
+        emit('parry', { tgt, src }); return 0;
+      }
+      amt *= 0.25; tgt.grit = Math.min(100, (tgt.grit || 0) + 12);
+      if (Math.random() < 0.5) popText(tgt.head(), 'Blocked', 'miss');
+      Audio.play('block');
+    }
+  }
+  if (tgt.has('dodge') && !opts.unavoidable) { popText(tgt.head(), 'Evaded', 'miss'); return 0; }
   // enemy attacks against the party: shown as BLOCKED on a miss
   if (tgt.team === 'party' && r.glance && src && src.team === 'enemy' && !opts.unavoidable) {
-    popText(tgt.head(), 'BLOCKED', 'miss'); Audio.play('block'); tgt.onBlock?.(src); return 0;
+    popText(tgt.head(), 'Blocked', 'miss'); Audio.play('block'); tgt.onBlock?.(src); return 0;
   }
   let mult = 1;
   if (tgt.has('sanctuary')) mult *= 0.6;
@@ -168,6 +184,7 @@ export function dealDamage(src, tgt, amt, opts = {}) {
   if (G.realm?.state?.glass) mult *= 1.5;
   if (G.realm?.state?.vamp && src && !src.dead && amt > 0 && !opts.reflected) src.hp = Math.min(src.maxHp, src.hp + amt * G.realm.state.vamp);
   if (tgt.has('reinforced')) mult *= tgt.status('reinforced').mult;
+  if (tgt.has('tethered')) mult *= 0.85;
   if (tgt.has('avatar')) mult *= 0.6;
   if (tgt.gearFlag && tgt.gearFlag('grit_armor') && (tgt.grit || 0) >= 100) mult *= 0.7;
   if (src && tgt.has('battlecry') && tgt.t && tgt.t('immovable') && !opts.reflected && src.team !== tgt.team) dealDamage(tgt, src, amt * 0.3, { roll: { hit: true }, reflected: true, quiet: true });
@@ -181,20 +198,14 @@ export function dealDamage(src, tgt, amt, opts = {}) {
   // feedback
   const c = tgt.center();
   const style = r.crit ? 'crit' : r.glance ? 'glance' : 'dmg';
-  popText(c.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.6, 0.4, 0)), r.crit ? `${amt}!` : String(amt), tgt.team === 'party' ? 'hurt' : style);
+  if (amt > 0 && (!opts.quiet || r.crit)) popText(c.clone().add(new THREE.Vector3((Math.random() - 0.5) * 0.6, 0.4, 0)), String(amt), tgt.team === 'party' ? 'hurt' : style);
   if (r.crit) {
-    popText(c.clone().add(new THREE.Vector3(0, 1.1, 0)), r.roll === 20 ? 'NAT 20!' : 'CRIT!', 'crit-banner');
-    Audio.play('crit'); shake(0.35); hitstop(0.09); G.post && (G.post.flash = 0.35);
+    Audio.play('crit'); shake(0.18); hitstop(0.06); G.post && (G.post.flash = 0.12);
     if (src && src.team === 'party') emit('critFx');
     emit('crit', { src, tgt, roll: r.roll });
-  } else if (amt > 0) { Audio.play(opts.heavy ? 'bigHit' : 'hit'); shake(opts.heavy ? 0.2 : 0.06); if (opts.heavy) hitstop(0.05); }
-  if (!opts.quiet && amt > 0 && (r.crit || opts.heavy || Math.random() < 0.35)) {
-    const w = WORDS[opts.word || opts.type] || WORDS.blunt;
-    popText(c.clone().add(new THREE.Vector3((Math.random() - 0.5) * 1.5, 0.8, 0)), w[Math.floor(Math.random() * w.length)], 'sfx', { color: opts.sfxColor });
-  }
-  if (r.glance && amt > 0) popText(c.clone().add(new THREE.Vector3(0, 0.9, 0)), 'glance', 'miss');
+  } else if (amt > 0) { Audio.play(opts.heavy ? 'bigHit' : 'hit'); shake(opts.heavy ? 0.1 : 0.02); if (opts.heavy) hitstop(0.03); }
   tgt.model?.flash(tgt.team === 'party' ? 0xff2020 : 0xffffff, 0.1);
-  burst(c, opts.color || (tgt.bloodColor ?? 0xffffff), Math.min(14, 4 + amt / 4), 5, 0.4, 0.14);
+  burst(c, opts.color || (tgt.bloodColor ?? 0xffffff), Math.min(8, 2 + amt / 8), 3, 0.35, 0.12);
   if (opts.knock && src) {
     const dir = tgt.pos.clone().sub(src.pos); dir.y = 0; dir.normalize();
     const kr = tgt.knockResist ?? 0; const k = opts.knock * (1 - kr);
@@ -219,13 +230,13 @@ export function kill(tgt, src, opts = {}) {
     const saver = G.party.find((h) => h.t && h.t('second_chance') && !h.downed && !G.combat.secondChanceUsed);
     if (saver) { G.combat.secondChanceUsed = true; tgt.hp = 1; tgt.addStatus('invuln', 1.5); popText(tgt.head(), 'SECOND CHANCE!', 'heal'); return; }
     tgt.hp = 0; tgt.downed = true; tgt.downT = 0; tgt.statuses.clear();
-    popText(tgt.head(), 'DOWN!', 'crit-banner', { color: '#ff4a4a' }); Audio.play('down');
+    popText(tgt.head(), 'Fallen', 'hurt'); Audio.play('down');
     emit('heroDown', { hero: tgt, by: src });
     return;
   }
   if (tgt.onDeath && tgt.onDeath(src) === false) return; // e.g. boss phase / cheat death
   tgt.hp = 0;
-  burst(tgt.center(), [tgt.bloodColor ?? 0xffffff, 0x222222, 0xffd23a], 26, 8, 0.9, 0.24);
+  burst(tgt.center(), [tgt.bloodColor ?? 0xffffff, 0xfff0c0], 14, 4, 0.8, 0.2, 2);
   tgt.remove();
   if (tgt.team === 'enemy' && G.realm?.state?.volatile && !tgt.isBoss) {
     const p = tgt.pos.clone();
@@ -252,7 +263,7 @@ export function heal(src, tgt, amt, quiet = false) {
 export function revive(tgt, frac = 0.4) {
   if (!tgt.downed) return;
   tgt.downed = false; tgt.hp = Math.max(1, Math.round(tgt.maxHp * frac)); tgt.addStatus('invuln', 1.5);
-  popText(tgt.head(), 'BACK UP!', 'heal'); Audio.play('heal'); burst(tgt.center(), 0xfff080, 20, 4, 0.8, 0.2, 2);
+  popText(tgt.head(), 'Revived', 'heal'); Audio.play('heal'); burst(tgt.center(), 0xfff080, 20, 3, 1, 0.25, 2);
 }
 
 // ── Team-Ups: two tagged abilities near each other in time/space combine ────
@@ -271,6 +282,9 @@ export const TEAMUPS = [
   { id: 'blinkstrike', name: 'Twin Shadows', a: 'blink', b: 'shadow', desc: 'Blink + shadowstep: both warp and strike twice.' },
   { id: 'overcharge', name: 'Overcharged Faith', a: 'overclock', b: 'holy', desc: 'Overclock + holy power: cooldowns reset for everyone.' },
   { id: 'wildfire', name: 'Wild Hunt', a: 'beast', b: 'fire', desc: 'The beast catches fire and runs through the enemy.' },
+  { id: 'shatter', name: 'Shatterstrike', a: 'frost', b: 'cleave', desc: 'Cleave through frozen foes: they burst into shards.' },
+  { id: 'hail', name: 'Hailstorm', a: 'frost', b: 'volley', desc: 'Frost meets volley: freezing arrows rain down.' },
+  { id: 'steam', name: 'Scalding Mist', a: 'frost', b: 'fire', desc: 'Fire and frost collide in a blinding, scalding cloud.' },
 ];
 const recentTags = []; // {tag, pos, time, by}
 export function markTag(tag, pos, by) {
@@ -289,7 +303,7 @@ export function triggerTeamUp(tu, pos, a, b) {
   const S = G.save;
   const first = S && !S.teamups.includes(tu.id);
   if (first) S.teamups.push(tu.id);
-  Audio.play('teamup'); shake(0.6); G.post && (G.post.flash = 0.5);
+  Audio.play('teamup'); shake(0.25); G.post && (G.post.flash = 0.25);
   addStyle(60); addMeter(15);
   G.combat.teamupsThisFight.push(tu.id);
   emit('teamup', { tu, first, a, b });
@@ -317,6 +331,7 @@ export function triggerTeamUp(tu, pos, a, b) {
     case 'pack': for (const e of foes.slice(0, 4)) { e.addStatus('stun', 2.2); dealDamage(src, e, 16 * lvlPow, { type: 'bite', roll: { hit: true } }); } break;
     case 'nanite': for (const h of G.party) h.addStatus('regen', 8, { every: 0.5, onTick: (x) => heal(src, x, x.maxHp * 0.025, true) }); zone({ pos, radius: 6, life: 3, color: 0x7affc8 }); break;
     case 'shrapnel': for (const e of foes) { dealDamage(src, e, 14 * lvlPow, { type: 'pierce', roll: { hit: true } }); e.addStatus('bleed', 5, { every: 0.5, onTick: (x) => dealDamage(src, x, 2 * lvlPow, { quiet: true, roll: { hit: true } }) }); } break;
+    case 'shatter': case 'hail': case 'steam': for (const e of foes) { dealDamage(src, e, 22 * lvlPow, { type: 'frost', roll: { hit: true }, knock: 6 }); e.addStatus(tu.id === 'steam' ? 'blind' : 'slow', 3); } burst(pos, [0xd8f4ff, 0x9ad8ff], 40, 8, 1, 0.4, 0); break;
     case 'blinkstrike': for (const e of foes.slice(0, 3)) { dealDamage(src, e, 18 * lvlPow, { type: 'shadow', roll: { hit: true } }); dealDamage(b || src, e, 18 * lvlPow, { type: 'shadow', roll: { hit: true } }); } break;
   }
 }

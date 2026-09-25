@@ -3,14 +3,14 @@ import * as THREE from 'three';
 import { G, activeHero } from './core/state.js';
 import { Input } from './core/input.js';
 import { Audio } from './core/audio.js';
-import { ComicRenderer } from './core/renderer.js';
+import { FantasyRenderer } from './core/renderer.js';
 import { on } from './core/events.js';
 import { UI } from './ui/ui.js';
 import { buildDialogues } from './content/dialogue.js';
 import { CHAT } from './content/banter.js';
 import { NPCS, COMPANIONS } from './content/npcs.js';
 import { CLASSES } from './game/classes.js';
-import { REALMS, loadLocation, travel, compModel, questHint, refreshObjective } from './game/realms.js';
+import { REALMS, loadLocation, travel, compModel, questHint, refreshObjective, makeSky } from './game/realms.js';
 import { updateEffects, updatePopupsFrame, FX, initEffects } from './game/effects.js';
 import { updateCombat, newCombatState } from './game/combat.js';
 import { updateCompanion } from './game/ai.js';
@@ -24,11 +24,11 @@ import { VoxelModel } from './entities/model.js';
 
 // ── boot ──
 loadSettings();
-const post = new ComicRenderer(document.getElementById('game'));
+const post = new FantasyRenderer(document.getElementById('game'));
 G.post = post; G.renderer = post.renderer;
 G.scene = new THREE.Scene();
-G.camera = new THREE.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 800);
-post.resize();
+G.camera = new THREE.PerspectiveCamera(58, innerWidth / innerHeight, 0.1, 900);
+post.build(G.scene, G.camera);
 G.combat = newCombatState();
 G.mode = 'title';
 Input.init(post.renderer.domElement);
@@ -158,12 +158,17 @@ function makePortraits() {
 
 // ── title backdrop: the tavern, slowly orbiting ──
 function titleBackdrop() {
-  const { W } = genTavern();
+  const { W, layout } = genTavern();
   G.world = W; W.buildAll(); G.scene.add(W.group);
-  G.scene.background = new THREE.Color(0x2a1040); G.scene.fog = new THREE.Fog(0x2a1a3a, 40, 160);
-  G.scene.add(new THREE.HemisphereLight(0x8a6aa0, 0x3a2a30, 1.6)); const s = new THREE.DirectionalLight(0xffc080, 1.9); s.position.set(0.6, 1, 0.35); G.scene.add(s);
+  const def = REALMS.tavern;
+  const sky = makeSky(def); G.scene.add(sky);
+  G.scene.background = new THREE.Color(def.sky[1]); G.scene.fog = new THREE.Fog(def.fog[0], def.fog[1], def.fog[2]);
+  const hemi = new THREE.HemisphereLight(def.amb, 0x3a2a30, def.hemi); const s = new THREE.DirectionalLight(def.sun, def.sunI); s.position.set(60, 80, 40); s.target.position.set(32, 0, 32);
+  s.castShadow = true; s.shadow.mapSize.set(2048, 2048); const sc = s.shadow.camera; sc.left = sc.bottom = -45; sc.right = sc.top = 45; sc.far = 220;
+  G.scene.add(hemi, s, s.target);
+  for (const L of layout.lights) { const pl = new THREE.PointLight(L.color, L.intensity, L.dist, 1.6); pl.position.copy(L.pos); G.scene.add(pl); }
   post.setStyle('tavern');
-  G.titleLights = G.scene.children.filter((c) => c.isLight);
+  G.titleLights = G.scene.children.filter((c) => c.isLight || c.isObject3D && c.type === 'Object3D').concat([sky]);
   initEffects();
 }
 
@@ -178,6 +183,19 @@ addEventListener('keydown', (e) => {
 // release the tavern stage lights once play begins
 on('locationLoaded', () => { if (G.titleLights) { G.titleLights.forEach((l) => G.scene.remove(l)); G.titleLights = null; } });
 
+// world ambience: sun + shadows follow the hero, roofs lift when you step inside, lamps flicker, storms flash
+let stormT = 6;
+function ambience(dt) {
+  const h = activeHero();
+  if (G.sun && h) { const d = G.sun.userData.dir; G.sun.target.position.copy(h.pos); G.sun.position.copy(h.pos).addScaledVector(d, 90); }
+  if (G.roof && G.inside && h) { const i = G.inside; const inside = h.pos.x > i.x0 && h.pos.x < i.x1 + 1 && h.pos.z > i.z0 && h.pos.z < i.z1 + 1; G.roof.material.opacity = THREE.MathUtils.lerp(G.roof.material.opacity ?? 1, inside ? 0 : 1, Math.min(1, dt * 6)); G.roof.material.transparent = true; G.roof.visible = G.roof.material.opacity > 0.02; }
+  for (const l of G.scene.children) if (l.isPointLight && l.userData.flicker) l.intensity = l.userData.base * (0.85 + Math.sin(G.realTime * 11 + l.id) * 0.06 + Math.random() * 0.09);
+  if (G.realm?.storm && G.hemi) {
+    stormT -= dt; if (stormT <= 0) { stormT = 5 + Math.random() * 9; G.stormFlash = 1; setTimeout(() => Audio.play('thunder'), 300 + Math.random() * 900); }
+    G.stormFlash = Math.max(0, (G.stormFlash || 0) - dt * 3); G.hemi.intensity = (REALMS[G.location]?.hemi ?? 1.1) + G.stormFlash * (Math.random() < 0.5 ? 2.5 : 1);
+  }
+}
+
 // ── loop ──
 let last = performance.now(), saveT = 0, titleT = 0, frameNo = 0;
 function frame(now) {
@@ -186,7 +204,7 @@ function frame(now) {
   G.realTime += dtReal;
   if (G.mode === 'title') {
     titleT += dtReal * 0.08;
-    G.camera.position.set(28 + Math.cos(titleT) * 30, 20, 28 + Math.sin(titleT) * 30); G.camera.lookAt(28, 6, 28);
+    G.camera.position.set(32 + Math.cos(titleT) * 34, 17, 32 + Math.sin(titleT) * 34); G.camera.lookAt(32, 7, 32);
   } else if (G.mode === 'play' && G.save) {
     let scale = G.paused ? 0 : G.timeScale;
     if (FX.hitstop > 0) { FX.hitstop -= dtReal; scale *= 0.05; }
@@ -212,6 +230,7 @@ function frame(now) {
       G.save.playTime += dt;
     }
     G.world?.update();
+    ambience(dtReal);
     updateCamera(dtReal);
     UI.update(dtReal);
     saveT += dtReal; if (saveT > 45) { saveT = 0; API.saveNow(); }

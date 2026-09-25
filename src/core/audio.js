@@ -69,6 +69,7 @@ const SFX = {
   teamup: () => { [0, 5, 7, 12, 17, 19, 24].forEach((s, i) => tone({ f: 262 * Math.pow(2, s / 12), t: 0.3, v: 0.12, delay: i * 0.05, type: 'sawtooth', filter: { f: 3000 } })); SFX.explode(); },
   nemesis: () => { [0, 1, 0, -5].forEach((s, i) => tone({ f: 110 * Math.pow(2, s / 12), t: 0.5, v: 0.25, delay: i * 0.22, type: 'sawtooth', filter: { f: 800 } })); },
   portal: () => { tone({ f: 100, f2: 1600, t: 1.2, v: 0.2, type: 'sine' }); noise({ t: 1.2, v: 0.2, f: 300, f2: 5000, type: 'bandpass', q: 5 }); },
+  thunder: () => { noise({ t: 2.4, v: 0.5, f: 300, f2: 60 }); noise({ t: 0.3, v: 0.4, f: 2000, f2: 200, delay: 0.05 }); tone({ f: 45, f2: 30, t: 2, v: 0.3, type: 'sine' }); },
   talk: () => tone({ f: 300 + Math.random() * 200, t: 0.04, v: 0.04, type: 'square' }),
   quest: () => [0, 7, 12].forEach((s, i) => tone({ f: 523 * Math.pow(2, s / 12), t: 0.4, v: 0.1, delay: i * 0.1, type: 'triangle' })),
   down: () => [0, -2, -4, -7].forEach((s, i) => tone({ f: 330 * Math.pow(2, s / 12), t: 0.3, v: 0.12, delay: i * 0.15, type: 'triangle' })),

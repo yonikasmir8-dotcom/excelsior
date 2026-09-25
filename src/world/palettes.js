@@ -1,61 +1,59 @@
-// Block palettes per realm. Colours are chosen to read as flat comic "inks" once halftoned.
+// Building materials per realm. Each entry is a tint over a painted texture (see textures.js).
+// Terrain is not in here: it is a smooth heightfield coloured per realm in gen.js.
 function pal(list) { const p = [null]; const idx = {}; list.forEach(([name, def]) => { idx[name] = p.length; p.push(def); }); return { p, B: idx }; }
+const INV = { c: 0, invisible: true };
 
 export const PALETTES = {
   tavern: pal([
-    ['plank', { c: 0x8a5a32, v: 0.18 }], ['darkplank', { c: 0x5a3820, v: 0.15 }], ['stone', { c: 0x7a7470, v: 0.2 }], ['cobble', { c: 0x6a6460, v: 0.3 }],
-    ['beam', { c: 0x4a2a14, v: 0.1 }], ['rug', { c: 0x9a2a2a, v: 0.1 }], ['rug2', { c: 0x2a4a8a, v: 0.1 }], ['fire', { c: 0xff8a2a, glow: true, v: 0.3 }],
-    ['lamp', { c: 0xffd070, glow: true }], ['barrel', { c: 0x7a4a22, v: 0.1 }], ['table', { c: 0xa06a3a, v: 0.1 }], ['bottle', { c: 0x3a8a4a, v: 0.4 }],
-    ['glass', { c: 0x9ad0e0, alpha: true }], ['grass', { c: 0x4a7a3a, top: 0x6aaa4a }], ['dirt', { c: 0x6a4a2a }], ['voidrock', { c: 0x3a2a4a, v: 0.25 }],
-    ['doorE', { c: 0xff9a3a, glow: true }], ['doorN', { c: 0xff3a9a, glow: true }], ['doorA', { c: 0x3affd0, glow: true }], ['doorR', { c: 0xc06aff, glow: true }], ['doorL', { c: 0xffffff, glow: true }],
-    ['gold', { c: 0xe0b030 }], ['board', { c: 0xd8c8a0 }], ['bookshelf', { c: 0x6a3a2a, top: 0x5a3020, v: 0.35 }], ['stage', { c: 0x6a2a4a }], ['star', { c: 0xfff0c0, glow: true }], ['leaf', { c: 0x3a8a3a, v: 0.25 }],
+    ['plank', { c: 0xb08058, tex: 'plank', scale: 4 }], ['darkplank', { c: 0x7a5236, tex: 'plank', scale: 4 }], ['stone', { c: 0xa8a098, tex: 'stone', scale: 3 }], ['cobble', { c: 0x9a948c, tex: 'cobble', scale: 3 }],
+    ['beam', { c: 0x5a3a24, tex: 'bark', scale: 2 }], ['plaster', { c: 0xe8d8b8, tex: 'plaster', scale: 4 }], ['rug', { c: 0xffffff, tex: 'rug', scale: 9 }],
+    ['glass', { c: 0x9ad0e0, alpha: true }], ['roof', { c: 0xb86a4a, tex: 'roof', scale: 3 }], ['inv', INV],
+    ['doorE', { c: 0xffa040, glow: true, emissive: 2.5 }], ['doorN', { c: 0x4a8aff, glow: true, emissive: 2.5 }], ['doorA', { c: 0x3affd0, glow: true, emissive: 2.5 }], ['doorR', { c: 0xc06aff, glow: true, emissive: 2.5 }], ['doorL', { c: 0xffffff, glow: true, emissive: 2.5 }],
+    ['board', { c: 0xd8c090, tex: 'plank', scale: 2 }], ['stage', { c: 0x8a3a4a, tex: 'plank', scale: 3 }], ['gold', { c: 0xd0a040, tex: 'metal', metal: 0.8, rough: 0.35, scale: 2 }],
   ]),
   emberwood: pal([
-    ['grass', { c: 0x6a5a2a, top: 0x8aa03a, v: 0.18 }], ['dirt', { c: 0x6a4428, v: 0.15 }], ['stone', { c: 0x7a7a80, v: 0.2 }], ['darkstone', { c: 0x4a4a55, v: 0.2 }],
-    ['log', { c: 0x5a3a22, v: 0.1 }], ['leafO', { c: 0xe07a2a, v: 0.25 }], ['leafR', { c: 0xc03a2a, v: 0.25 }], ['leafY', { c: 0xe0b03a, v: 0.25 }], ['leafG', { c: 0x5a8a3a, v: 0.25 }],
-    ['water', { c: 0x3a7ac0, alpha: true, solid: false }], ['sand', { c: 0xd8c080, v: 0.1 }], ['mushstem', { c: 0xe8e0d0 }], ['mushcap', { c: 0xc070ff, glow: true, v: 0.2 }], ['mushcap2', { c: 0x40e0c0, glow: true, v: 0.2 }],
-    ['ley', { c: 0x60f0ff, glow: true }], ['leycorrupt', { c: 0xc02060, glow: true }], ['brick', { c: 0x6a6070, v: 0.18, hard: false }], ['moss', { c: 0x4a6a3a, top: 0x5a8a3a }],
-    ['gold', { c: 0xffcc30, glow: true }], ['banner', { c: 0x6a2a8a }], ['tent', { c: 0xb08a5a }], ['fire', { c: 0xff7a2a, glow: true }], ['bone', { c: 0xe8e0c8 }], ['flower', { c: 0xff6a8a, v: 0.4 }], ['bedrock', { c: 0x2a2a30, hard: true }],
+    ['brick', { c: 0xa09a90, tex: 'stone', scale: 3 }], ['darkstone', { c: 0x6a6670, tex: 'stone', scale: 3 }], ['cobble', { c: 0x8a847a, tex: 'cobble', scale: 3 }],
+    ['ley', { c: 0x60f0ff, glow: true, emissive: 3 }], ['leycorrupt', { c: 0xc02060, glow: true, emissive: 2.5 }],
+    ['banner', { c: 0x6a1a2a, tex: 'plaster', scale: 2 }], ['tent', { c: 0xc0a07a, tex: 'plaster', scale: 2 }], ['wood', { c: 0x8a6040, tex: 'plank', scale: 3 }],
+    ['inv', INV], ['gold', { c: 0xd8a830, tex: 'metal', metal: 0.85, rough: 0.3, scale: 2 }], ['fire', { c: 0xff8a2a, glow: true, emissive: 3 }], ['roof', { c: 0x6a3a3a, tex: 'roof', scale: 3 }],
   ]),
   neon: pal([
-    ['asphalt', { c: 0x2a2a38, v: 0.08 }], ['sidewalk', { c: 0x6a6a7a, v: 0.1 }], ['line', { c: 0xf0e060 }], ['concrete', { c: 0x5a5a6a, v: 0.15 }],
-    ['wallA', { c: 0x3a3a5a, v: 0.12 }], ['wallB', { c: 0x5a2a4a, v: 0.12 }], ['wallC', { c: 0x2a4a5a, v: 0.12 }], ['wallD', { c: 0x7a6a5a, v: 0.12 }],
-    ['win', { c: 0xffe080, glow: true, v: 0.4 }], ['winB', { c: 0x60c0ff, glow: true, v: 0.4 }], ['winOff', { c: 0x1a1a2a }],
-    ['neonP', { c: 0xff3aa0, glow: true }], ['neonC', { c: 0x3affff, glow: true }], ['neonY', { c: 0xffe03a, glow: true }], ['neonG', { c: 0x6aff3a, glow: true }],
-    ['roof', { c: 0x4a4a52, v: 0.2 }], ['metal', { c: 0x8a8a9a, v: 0.1 }], ['car1', { c: 0xd03a3a }], ['car2', { c: 0x3a6ad0 }], ['car3', { c: 0xe0c03a }], ['tire', { c: 0x111111 }],
-    ['pad', { c: 0x3affff, glow: true }], ['eraser', { c: 0xffffff, glow: true }], ['glass', { c: 0x80c0e0, alpha: true }], ['tree', { c: 0x2a8a4a, v: 0.2 }], ['bedrock', { c: 0x1a1a22, hard: true }], ['billboard', { c: 0xff7a2a, glow: true }],
+    ['street', { c: 0x4a4a52, tex: 'cobble', scale: 3 }], ['walk', { c: 0xb0aca4, tex: 'stone', scale: 2 }], ['line', { c: 0xd8b040, tex: 'plaster', scale: 2 }],
+    ['marble', { c: 0xece6dc, tex: 'marble', scale: 6 }], ['stoneA', { c: 0xa8a4a0, tex: 'stone', scale: 4 }], ['stoneB', { c: 0x8a7a8a, tex: 'stone', scale: 4 }], ['stoneC', { c: 0x9a8a70, tex: 'stone', scale: 4 }],
+    ['win', { c: 0xffc870, glow: true, emissive: 1.6 }], ['winB', { c: 0x9ad8ff, glow: true, emissive: 1.4 }], ['winOff', { c: 0x2a2a38, tex: 'plaster', rough: 0.3, scale: 2 }],
+    ['neonP', { c: 0xff4aa0, glow: true, emissive: 3 }], ['neonC', { c: 0x4ae8ff, glow: true, emissive: 3 }], ['neonY', { c: 0xffd84a, glow: true, emissive: 3 }], ['neonG', { c: 0x8aff5a, glow: true, emissive: 3 }],
+    ['roof', { c: 0x6a6a74, tex: 'stone', scale: 4 }], ['gold', { c: 0xd8a830, tex: 'metal', metal: 0.85, rough: 0.3, scale: 2 }],
+    ['car1', { c: 0x8a2a2a, tex: 'metal', metal: 0.6, rough: 0.35 }], ['car2', { c: 0x2a4a8a, tex: 'metal', metal: 0.6, rough: 0.35 }], ['car3', { c: 0xc0a040, tex: 'metal', metal: 0.6, rough: 0.35 }],
+    ['pad', { c: 0x4ae8ff, glow: true, emissive: 2.5 }], ['eraser', { c: 0xffffff, glow: true, emissive: 3 }], ['glass', { c: 0x80c0e0, alpha: true }], ['inv', INV], ['billboard', { c: 0xff8a3a, glow: true, emissive: 2 }],
   ]),
   asterion: pal([
-    ['hull', { c: 0x5a6068, v: 0.08 }], ['floor', { c: 0x3a4048, v: 0.06 }], ['grate', { c: 0x2a3038, v: 0.2 }], ['panel', { c: 0xa0a8b0, v: 0.06 }],
-    ['stripe', { c: 0xe0a020 }], ['red', { c: 0xff3040, glow: true }], ['cyan', { c: 0x40ffd0, glow: true }], ['light', { c: 0xe0f0ff, glow: true }],
-    ['pipe', { c: 0x8a6a4a, v: 0.1 }], ['crate', { c: 0x6a7a4a, v: 0.15 }], ['crate2', { c: 0x8a5a3a, v: 0.15 }], ['glass', { c: 0x80e0ff, alpha: true }],
-    ['terminal', { c: 0x40ff80, glow: true }], ['terminalOff', { c: 0x3a3a3a }], ['core', { c: 0xff3040, glow: true }], ['coreDoor', { c: 0xffa020, glow: true }],
-    ['plant', { c: 0x3a8a4a, v: 0.3 }], ['bedrock', { c: 0x1a1e22, hard: true }], ['star', { c: 0xffffff, glow: true }], ['rust', { c: 0x8a4a2a, v: 0.3 }],
+    ['hull', { c: 0x8a96a4, tex: 'metal', metal: 0.5, rough: 0.5, scale: 4 }], ['floor', { c: 0x5a6068, tex: 'metal', metal: 0.4, rough: 0.6, scale: 3 }], ['panel', { c: 0xd8dce4, tex: 'marble', scale: 5 }],
+    ['stripe', { c: 0xd8a030, tex: 'plaster', scale: 2 }], ['red', { c: 0xff4050, glow: true, emissive: 2.5 }], ['cyan', { c: 0x40ffd0, glow: true, emissive: 2.5 }], ['light', { c: 0xd8f0ff, glow: true, emissive: 2 }],
+    ['pipe', { c: 0xb07a4a, tex: 'metal', metal: 0.8, rough: 0.35, scale: 2 }], ['glass', { c: 0x80e0ff, alpha: true }],
+    ['terminal', { c: 0x40ff80, glow: true, emissive: 2.5 }], ['terminalOff', { c: 0x3a3a3a, tex: 'metal', scale: 2 }], ['core', { c: 0xff3040, glow: true, emissive: 3 }], ['coreDoor', { c: 0xffa020, glow: true, emissive: 2 }],
+    ['inv', INV],
   ]),
   loom: pal([
-    ['white', { c: 0xf0ece8, v: 0.06 }], ['thread1', { c: 0xff3a8a, glow: true }], ['thread2', { c: 0x3affd0, glow: true }], ['thread3', { c: 0xff9a3a, glow: true }], ['thread4', { c: 0xc06aff, glow: true }],
-    ['grey', { c: 0xb0aca8, v: 0.1 }], ['gold', { c: 0xffd23a, glow: true }], ['bedrock', { c: 0x8a8480, hard: true }],
-    ['grass', { c: 0x6a5a2a, top: 0x8aa03a }], ['asphalt', { c: 0x2a2a38 }], ['hull', { c: 0x5a6068 }], ['neonP', { c: 0xff3aa0, glow: true }],
+    ['white', { c: 0xf4f0ec, tex: 'marble', scale: 8 }], ['thread1', { c: 0xff4a9a, glow: true, emissive: 2.5 }], ['thread2', { c: 0x4affd8, glow: true, emissive: 2.5 }], ['thread3', { c: 0xffa04a, glow: true, emissive: 2.5 }], ['thread4', { c: 0xc07aff, glow: true, emissive: 2.5 }],
+    ['grey', { c: 0xb8b4b0, tex: 'stone', scale: 3 }], ['gold', { c: 0xffd84a, glow: true, emissive: 1.8 }], ['inv', INV],
+    ['grass', { c: 0x7a9a4a, tex: 'plaster', scale: 3 }], ['street', { c: 0x4a4a52, tex: 'cobble', scale: 3 }], ['hull', { c: 0x8a96a4, tex: 'metal', metal: 0.5, scale: 3 }],
   ]),
 };
 
-// Rift palettes are generated by mixing the three genres with a twist.
+export const RIFT_THEMES = [
+  { name: 'Shattered Moonfields', low: 0x5a5a7a, high: 0xb8b8d8, rock: 0x6a6a80, sky: [0x0a0a2a, 0x5a4a8a], fog: 0x3a3a6a, accent: 0xc0c8ff, trees: 'deadtree', crystal: 0 },
+  { name: 'Ashen Wastes', low: 0x4a3a34, high: 0x8a6a5a, rock: 0x3a3030, sky: [0x2a0a0a, 0xa04a2a], fog: 0x6a3a2a, accent: 0xff7a3a, trees: 'deadtree', crystal: 2 },
+  { name: 'Crystal Hollows', low: 0x4a5a6a, high: 0x8aa0b0, rock: 0x5a6a7a, sky: [0x0a1a3a, 0x3a8ab0], fog: 0x3a6a8a, accent: 0x60f0ff, trees: 'pine', crystal: 0 },
+  { name: 'Feywild Bloom', low: 0x4a7a3a, high: 0xa0c060, rock: 0x7a8a6a, sky: [0x3a1a5a, 0xffa0c0], fog: 0xc08ab0, accent: 0xff8ad0, trees: 'tree', crystal: 1 },
+  { name: 'Frostwild', low: 0x8a9aa8, high: 0xf0f4f8, rock: 0x7a8490, sky: [0x3a5a8a, 0xd0e0f0], fog: 0xb0c4d8, accent: 0x9ae8ff, trees: 'pine', crystal: 0 },
+  { name: 'Storm-Torn Steppes', low: 0x5a6a4a, high: 0x9aa070, rock: 0x6a6a60, sky: [0x1a2030, 0x6a7a90], fog: 0x4a5a6a, accent: 0xaef4ff, trees: 'deadtree', crystal: 0 },
+  { name: 'Clockwork Ruins', low: 0x8a6a3a, high: 0xc8a060, rock: 0x7a6a50, sky: [0x3a2a1a, 0xe0a060], fog: 0x9a7a4a, accent: 0xffb040, trees: 'deadtree', crystal: 2 },
+  { name: 'Neon Jungle', low: 0x1a4a2a, high: 0x3a8a4a, rock: 0x2a3a30, sky: [0x0a0a1a, 0x4a1a5a], fog: 0x1a2a3a, accent: 0xff4aa0, trees: 'tree', crystal: 1 },
+];
 export function riftPalette(rng) {
-  const hue = rng.next();
-  const themes = [
-    { name: 'Gothic Moon', ground: 0x4a4a6a, top: 0xa0a0c0, accent: 0xff3a3a, glow: 0xc0c0ff, plant: 0x2a2a4a },
-    { name: 'Candy Apocalypse', ground: 0xff8ac0, top: 0xfff0f8, accent: 0x6affd0, glow: 0xffe03a, plant: 0xff3a8a },
-    { name: 'Steampunk Swamp', ground: 0x4a3a22, top: 0x5a7a3a, accent: 0xc08a3a, glow: 0x80ff60, plant: 0x3a5a2a },
-    { name: 'Neon Jungle', ground: 0x1a3a2a, top: 0x2aff8a, accent: 0xff3aa0, glow: 0x3affff, plant: 0x1a8a4a },
-    { name: 'Clockwork Desert', ground: 0xc0904a, top: 0xe8c080, accent: 0xa07030, glow: 0xffa020, plant: 0x8a6a3a },
-    { name: 'Frozen Starship', ground: 0x6a8aa0, top: 0xf0f8ff, accent: 0x40a0ff, glow: 0x80f0ff, plant: 0xa0d0e0 },
-    { name: 'Comic-Ink Void', ground: 0x111111, top: 0xf8f8f8, accent: 0xffe03a, glow: 0xff3a3a, plant: 0x444444 },
-    { name: 'Lava Metropolis', ground: 0x3a2a2a, top: 0x5a3a3a, accent: 0xff5a1a, glow: 0xff8a2a, plant: 0x2a1a1a },
-  ];
-  const t = rng.pick(themes);
+  const t = rng.pick(RIFT_THEMES);
   return { theme: t, ...pal([
-    ['ground', { c: t.ground, top: t.top, v: 0.2 }], ['under', { c: t.ground, v: 0.25 }], ['accent', { c: t.accent, v: 0.2 }], ['glow', { c: t.glow, glow: true }],
-    ['plant', { c: t.plant, v: 0.3 }], ['stone', { c: 0x6a6a70, v: 0.2 }], ['tear', { c: 0xff3a8a, glow: true }], ['tearOff', { c: 0x3a3a3a }], ['bedrock', { c: 0x1a1a1a, hard: true }],
-    ['hull', { c: 0x5a6068 }], ['win', { c: 0xffe080, glow: true }], ['log', { c: 0x5a3a22 }],
+    ['stone', { c: 0xa09a94, tex: 'stone', scale: 3 }], ['tear', { c: 0xff3a8a, glow: true, emissive: 3 }], ['tearOff', { c: 0x3a3a3a, tex: 'stone', scale: 2 }],
+    ['ruin', { c: t.rock, tex: 'stone', scale: 3 }], ['glowA', { c: t.accent, glow: true, emissive: 2.5 }], ['inv', { c: 0, invisible: true }], ['hull', { c: 0x8a96a4, tex: 'metal', metal: 0.5, scale: 3 }],
   ]) };
 }

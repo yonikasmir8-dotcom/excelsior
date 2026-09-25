@@ -22,12 +22,12 @@ import { UI } from '../ui/ui.js';
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 
 export const REALMS = {
-  tavern: { name: 'The Hearth Between', kind: 'tavern', style: 'tavern', music: 'tavern', sky: [0x1a0a3a, 0x6a2a6a], fog: [0x2a1a3a, 40, 140], sun: 0xffd0a0, amb: 0xd0b0c0, stars: true, bright: 1.5 },
-  emberwood: { name: 'Emberwood Reach', kind: 'emberwood', style: 'emberwood', music: 'emberwood', sky: [0x5a8ad0, 0xffc890], fog: [0xe8c090, 40, 150], sun: 0xfff0d0, amb: 0x9a8aa0, base: 1, genre: 'Fantasy', blurb: 'An endless autumn forest. A dead king. Three corrupted ley-stones.' },
-  neon: { name: 'Neon Meridian', kind: 'neon', style: 'neon', music: 'neon', sky: [0x0a0420, 0x6a1a6a], fog: [0x2a0a3a, 40, 170], sun: 0xa0a0ff, amb: 0x8a70c0, stars: true, base: 3, genre: 'Superhero', blurb: 'A city where the heroes are being erased from memory.' },
-  asterion: { name: 'The Asterion', kind: 'asterion', style: 'asterion', music: 'asterion', sky: [0x02040a, 0x0a1a2a], fog: [0x05101a, 50, 170], sun: 0xc0e0ff, amb: 0x5a7080, stars: true, base: 5, genre: 'Sci-Fi', blurb: 'A derelict ship whose AI is rewriting its sleeping crew.' },
-  rift: { name: 'Rift', kind: 'rift', style: 'rift', music: 'rift', sky: [0x2a0a3a, 0xff6a9a], fog: [0x4a1a5a, 40, 140], sun: 0xffe0f0, amb: 0x9a7aa0, stars: true, base: 2, genre: 'Everything', blurb: 'Torn places where genres bleed together. Endless, stranger with depth.' },
-  loom: { name: 'The Loom', kind: 'loom', style: 'loom', music: 'loom', sky: [0xffffff, 0xffd0e0], fog: [0xfff0f4, 50, 160], sun: 0xffffff, amb: 0xc0b0c0, base: 10, genre: 'Finale', blurb: 'Where every thread meets.' },
+  tavern: { name: 'The Hearth Between', kind: 'tavern', style: 'tavern', music: 'tavern', sky: [0x140a2e, 0x7a3a6a], horizon: 0xe08a7a, fog: [0x3a2a4a, 50, 170], sun: 0xffc8a0, sunI: 1.8, amb: 0xb8a0d0, hemi: 1.2, stars: true, cloud: 0xc07aa0, sunHeight: 0.46 },
+  emberwood: { name: 'Emberwood Reach', kind: 'emberwood', style: 'emberwood', music: 'emberwood', sky: [0x4a6aa8, 0xf0b878], horizon: 0xffd8a0, fog: [0xd8b088, 45, 170], sun: 0xffe0b0, sunI: 2.8, amb: 0xa8b0d0, ground: 0x5a4a30, cloud: 0xffe0c0, sunHeight: 0.42, base: 1, genre: 'Fantasy', blurb: 'An endless autumn forest. A dead king. Three corrupted ley-stones.' },
+  neon: { name: 'Neon Meridian', kind: 'neon', style: 'neon', music: 'neon', sky: [0x0a1024, 0x3a3a6a], horizon: 0xb04a7a, fog: [0x2a2a4a, 50, 190], sun: 0xb0d0ff, sunI: 1.4, amb: 0x8a90c8, hemi: 1.3, cloud: 0x6a7aa0, storm: true, sunHeight: 0.3, base: 3, genre: 'Superhero', blurb: 'A city where the heroes are being erased from memory.' },
+  asterion: { name: 'The Asterion', kind: 'asterion', style: 'asterion', music: 'asterion', sky: [0x02040c, 0x0a1428], horizon: 0x1a2a4a, fog: [0x08101c, 60, 200], sun: 0xd0e8ff, sunI: 2.2, amb: 0x6a80a0, hemi: 1.2, stars: true, nebula: ['#ff4a9a', '#4ad8ff'], cloud: 0x0a1428, sunHeight: 0.2, base: 5, genre: 'Sci-Fi', blurb: 'A derelict ship whose AI is rewriting its sleeping crew.' },
+  rift: { name: 'Rift', kind: 'rift', style: 'rift', music: 'rift', sky: [0x2a0a3a, 0xff6a9a], fog: [0x4a1a5a, 45, 160], sun: 0xffe8f0, sunI: 2.4, amb: 0xa89ac0, stars: true, base: 2, genre: 'Everything', blurb: 'Torn places where genres bleed together. Endless, stranger with depth.' },
+  loom: { name: 'The Loom', kind: 'loom', style: 'loom', music: 'loom', sky: [0x5a8ad8, 0xffe8f0], horizon: 0xffffff, fog: [0xe8e0f0, 60, 200], sun: 0xfff4e0, sunI: 3, amb: 0xd0c8e8, cloud: 0xffffff, storm: true, sunHeight: 0.3, base: 10, genre: 'Finale', blurb: 'Where every thread meets.' },
 };
 
 export const TRIAL_MODS = { fighter: ['elite', 'swift', 'bloodmoon'], sorcerer: ['glass', 'volatile', 'fate'], artificer: ['nemesis', 'elite', 'volatile'], cleric: ['glass', 'vampire', 'swift'], rogue: ['swift', 'nemesis', 'glass'], ranger: ['lowgrav', 'elite', 'swift'] };
@@ -45,19 +45,28 @@ export const RIFT_MODS = [
 ];
 
 let skyMesh = null, lights = [];
-function makeSky(def) {
-  const c = document.createElement('canvas'); c.width = 16; c.height = 512; const g = c.getContext('2d');
-  const grd = g.createLinearGradient(0, 0, 0, 512);
-  grd.addColorStop(0, '#' + new THREE.Color(def.sky[0]).getHexString()); grd.addColorStop(0.55, '#' + new THREE.Color(def.sky[1]).getHexString()); grd.addColorStop(1, '#' + new THREE.Color(def.sky[1]).getHexString());
-  g.fillStyle = grd; g.fillRect(0, 0, 16, 512);
-  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
-  const m = new THREE.Mesh(new THREE.SphereGeometry(380, 24, 16), new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false }));
-  if (def.stars) {
-    const pos = []; for (let i = 0; i < 700; i++) { const v = V(Math.random() - .5, Math.random() * 0.9 + 0.05, Math.random() - .5).normalize().multiplyScalar(360); pos.push(v); }
-    const star = new THREE.InstancedMesh(new THREE.BoxGeometry(1.4, 1.4, 1.4), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), pos.length);
-    const d = new THREE.Object3D(); pos.forEach((p, i) => { d.position.copy(p); d.scale.setScalar(0.5 + Math.random() * 1.2); d.updateMatrix(); star.setMatrixAt(i, d.matrix); }); m.add(star);
+export function makeSky(def) {
+  // painted equirectangular sky: gradient, sun glow, soft cloud banks, optional stars
+  const W = 1024, H = 512; const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+  const hex = (n) => '#' + new THREE.Color(n).getHexString();
+  const grd = g.createLinearGradient(0, 0, 0, H);
+  grd.addColorStop(0, hex(def.sky[0])); grd.addColorStop(0.42, hex(def.sky[0])); grd.addColorStop(0.5, hex(def.sky[1])); grd.addColorStop(0.56, hex(def.horizon ?? def.sky[1])); grd.addColorStop(1, hex(def.sky[1]));
+  g.fillStyle = grd; g.fillRect(0, 0, W, H);
+  if (def.stars) for (let i = 0; i < 900; i++) { const y = Math.random() * H * 0.48; g.fillStyle = `rgba(255,255,255,${0.2 + Math.random() * 0.8 * (1 - y / (H * 0.5))})`; const r = Math.random() < 0.05 ? 1.6 : 0.8; g.beginPath(); g.arc(Math.random() * W, y, r, 0, 7); g.fill(); }
+  if (def.nebula) for (let i = 0; i < 40; i++) { const x = Math.random() * W, y = H * (0.1 + Math.random() * 0.3), r = 40 + Math.random() * 120; const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, def.nebula[i % 2] + '30'); gr.addColorStop(1, def.nebula[i % 2] + '00'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); }
+  // sun / moon glow
+  const sx = W * 0.62, sy = H * (def.sunHeight ?? 0.34);
+  const sg = g.createRadialGradient(sx, sy, 0, sx, sy, 180); sg.addColorStop(0, hex(def.sun) + 'ff'); sg.addColorStop(0.08, hex(def.sun) + 'cc'); sg.addColorStop(0.3, hex(def.sun) + '33'); sg.addColorStop(1, hex(def.sun) + '00');
+  g.fillStyle = sg; g.fillRect(0, 0, W, H);
+  // cloud banks
+  const cloud = hex(def.cloud ?? def.sky[1]);
+  for (let i = 0; i < 70; i++) {
+    const x = Math.random() * W, y = H * (0.3 + Math.random() * 0.2), rx = 40 + Math.random() * 140, ry = 8 + Math.random() * 18;
+    const cg = g.createRadialGradient(x, y, 0, x, y, rx); cg.addColorStop(0, cloud + '55'); cg.addColorStop(1, cloud + '00');
+    g.save(); g.translate(x, y); g.scale(1, ry / rx); g.translate(-x, -y); g.fillStyle = cg; g.fillRect(x - rx, y - rx, rx * 2, rx * 2); g.restore();
   }
-  return m;
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.Mesh(new THREE.SphereGeometry(380, 32, 20), new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false }));
 }
 
 export function clearLocation() {
@@ -65,7 +74,8 @@ export function clearLocation() {
   for (const e of G.entities.slice()) e.remove();
   G.entities = []; clearEffects();
   if (G.world) { G.scene.remove(G.world.group); G.world.dispose(); G.world = null; }
-  if (skyMesh) { G.scene.remove(skyMesh); skyMesh = null; }
+  if (skyMesh) { G.scene.remove(skyMesh); skyMesh.geometry.dispose(); skyMesh.material.map.dispose(); skyMesh = null; }
+  G.sun = null; G.roof = null; G.inside = null;
   lights.forEach((l) => G.scene.remove(l)); lights = [];
   G.interactables = []; G.markers = []; G.pickups = [];
   G.party = [];
@@ -102,13 +112,22 @@ export function loadLocation(id, opts = {}) {
   G.world = W; G.layout = layout; W.buildAll(); G.scene.add(W.group);
   G.realm.protect = layout.protect || (() => false);
   // sky, fog, light
-  skyMesh = makeSky(def); G.scene.add(skyMesh);
-  G.scene.background = new THREE.Color(def.sky[1]);
-  G.scene.fog = new THREE.Fog(def.fog[0], def.fog[1], def.fog[2]);
-  if (id === 'rift' && layout.theme) { G.realm.name = 'Rift: ' + layout.theme.name; G.scene.fog.color.setHex(layout.theme.ground).lerp(new THREE.Color(0xffffff), 0.4); }
-  const hemi = new THREE.HemisphereLight(def.amb, 0x3a2a30, 1.6 * (def.bright || 1));
-  const sun = new THREE.DirectionalLight(def.sun, 1.9); sun.position.set(0.6, 1, 0.35);
-  lights = [hemi, sun]; lights.forEach((l) => G.scene.add(l));
+  let skyDef = def;
+  if (id === 'rift' && layout.theme) { const T = layout.theme; G.realm.name = 'Rift: ' + T.name; skyDef = { ...def, sky: T.sky, fog: [T.fog, def.fog[1], def.fog[2]], cloud: T.fog, storm: T.name.startsWith('Storm') }; G.realm.storm = skyDef.storm; }
+  skyMesh = makeSky(skyDef); G.scene.add(skyMesh);
+  G.scene.background = new THREE.Color(skyDef.sky[1]);
+  G.scene.fog = new THREE.Fog(skyDef.fog[0], skyDef.fog[1], skyDef.fog[2]);
+  const hemi = new THREE.HemisphereLight(def.amb, def.ground ?? 0x3a2a30, def.hemi ?? 1.1);
+  const sun = new THREE.DirectionalLight(def.sun, def.sunI ?? 2.6);
+  sun.castShadow = G.settings.shadows !== false;
+  sun.shadow.mapSize.set(2048, 2048); const sc = sun.shadow.camera; sc.left = sc.bottom = -45; sc.right = sc.top = 45; sc.near = 1; sc.far = 220;
+  sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04;
+  sun.userData.dir = new THREE.Vector3(...(def.sunDir || [0.55, 0.9, 0.3])).normalize();
+  G.sun = sun; G.hemi = hemi; G.realm.storm = G.realm.storm || !!def.storm;
+  lights = [hemi, sun, sun.target];
+  for (const L of layout.lights || []) { const pl = new THREE.PointLight(L.color, L.intensity, L.dist, 1.6); pl.position.copy(L.pos); pl.userData.flicker = true; pl.userData.base = L.intensity; lights.push(pl); }
+  lights.forEach((l) => G.scene.add(l));
+  G.roof = G.world.roof || null; G.inside = layout.inside || null;
   G.post.setStyle(def.style);
   Audio.music(def.music);
   initEffects();

@@ -7,8 +7,8 @@ import { strike, heal, nearestEnemy, dealDamage, alliesNear, markTag, revive } f
 import { Audio } from '../core/audio.js';
 
 const SPECS = {
-  turret: { kind: 'drone', scale: 0.8, colors: { body: 0x8a6a3a, accent: 0xd0a040 }, glowEyes: 0x40ffd0 },
-  bot: { kind: 'drone', scale: 0.5, colors: { body: 0xe0e0e8, accent: 0x40d080 }, glowEyes: 0x40ff80 },
+  turret: { kind: 'drone', scale: 0.8, colors: { body: 0x6a4a2a, accent: 0xd8a040 }, glowEyes: 0xffb04a },
+  bot: { kind: 'drone', scale: 0.55, colors: { body: 0x7a6a50, accent: 0x7aff9a }, glowEyes: 0x7aff9a },
   wolf: { kind: 'beast', scale: 0.8, colors: { body: 0x8a8070, skin: 0x5a5048, legs: 0x6a6058, eye: 0xffe040 } },
   decoy: { kind: 'humanoid', scale: 1, colors: { skin: 0x5a4a6a, body: 0x3a2a4a, legs: 0x2a1a3a, accent: 0x6a4a8a } },
 };
@@ -19,7 +19,8 @@ export class Minion extends Actor {
     this.kind = kind; this.owner = owner; this.isMinion = true; this.life = opts.life || Infinity; this.pow = owner.pow;
     this.atk = owner.atk; this.fireT = 0; this.opts = opts; this.tesla = false;
     if (kind === 'turret' || kind === 'decoy') this.speed = 0;
-    if (kind === 'bot') { this.flying = true; this.hoverY = pos.y + 0.5; }
+    if (kind === 'bot' && !opts.stationary) { this.flying = true; this.hoverY = pos.y + 0.5; }
+    if (opts.stationary) this.speed = 0;
     this.bloodColor = kind === 'wolf' ? 0xaa2222 : 0xffd060;
     this.untargetable = kind === 'bot';
     G.entities.push(this);
@@ -54,10 +55,12 @@ export class Minion extends Actor {
         }
       }
     } else if (this.kind === 'bot') {
-      const target = o.dead ? this : o;
-      const want = target.pos.clone().add(new THREE.Vector3(Math.sin(G.time) * 1.5, 0, Math.cos(G.time) * 1.5));
-      const to = want.sub(this.pos); to.y = 0; if (to.length() > 0.5) this.moveInput.copy(to.normalize());
-      this.hoverY = target.pos.y + 1.2;
+      if (!this.opts.stationary) {
+        const target = o.dead ? this : o;
+        const want = target.pos.clone().add(new THREE.Vector3(Math.sin(G.time) * 1.5, 0, Math.cos(G.time) * 1.5));
+        const to = want.sub(this.pos); to.y = 0; if (to.length() > 0.5) this.moveInput.copy(to.normalize());
+        this.hoverY = target.pos.y + 1.2;
+      } else if (Math.random() < 0.3) burst(this.center().add(new THREE.Vector3(0, 0.6, 0)), 0x7aff9a, 1, 1, 1, 0.2, 2);
       if (this.fireT <= 0) {
         this.fireT = 1;
         if (o.gearFlag && o.gearFlag('bot_revive')) for (const a of alliesNear(this.pos, 3, this.team, true)) if (a.downed) { revive(a, 0.3); }

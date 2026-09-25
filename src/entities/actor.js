@@ -49,7 +49,7 @@ export class Actor {
   get canAct() { return !this.dead && !this.downed && !this.has('stun') && !this.has('frozen'); }
   speedMult() {
     let m = 1;
-    if (this.has('slow')) m *= 0.5; if (this.has('haste')) m *= 1.4; if (this.has('snare') || this.has('stun') || this.has('root')) m = 0;
+    if (this.has('slow')) m *= 0.5; if (this.has('haste')) m *= 1.4; if (this.has('guarding')) m *= 0.4; if (this.has('drawing')) m *= 0.45; if (this.has('snare') || this.has('stun') || this.has('root')) m = 0;
     return m;
   }
   faceTo(p, rate = 1) {
@@ -76,9 +76,16 @@ export class Actor {
     this.vel.y = Math.max(this.vel.y, -40);
     const kv = this.knock; const total = this.vel.clone().add(kv);
     kv.multiplyScalar(Math.max(0, 1 - dt * 6));
+    const wasG = this.grounded;
     this.moveAxis(total.x * dt, 0); this.moveAxis(total.z * dt, 2);
-    const wasG = this.grounded; this.grounded = false;
+    this.grounded = false;
     this.moveAxis(total.y * dt, 1);
+    // smooth terrain: land on it, walk up gentle slopes, stick to hills when descending
+    const t = W.terrainAt(this.pos.x, this.pos.z);
+    if (t > -Infinity && !this.flying) {
+      if (this.pos.y < t) { this.pos.y = t; if (this.vel.y < 0) this.vel.y = 0; this.grounded = true; this.airJumps = 0; }
+      else if (wasG && this.vel.y <= 0.01 && this.pos.y - t < 0.45) { this.pos.y = t; this.grounded = true; }
+    }
     if (this.pos.y < -10) this.onVoid();
     if (!wasG && this.grounded) this.onLand?.();
   }
@@ -86,7 +93,8 @@ export class Actor {
     if (d === 0) return;
     const W = G.world, r = this.radius, h = this.height;
     const p = this.pos.clone(); p.setComponent(axis, p.getComponent(axis) + d);
-    const hit = W.boxHits(p.x - r, p.y, p.z - r, p.x + r, p.y + h, p.z + r);
+    let hit = W.boxHits(p.x - r, p.y, p.z - r, p.x + r, p.y + h, p.z + r);
+    if (!hit && axis !== 1 && !this.flying) { const t = W.terrainAt(p.x, p.z); if (t - p.y > 1.3 || t === -Infinity && this.hardEdges) hit = true; }
     if (!hit) { this.pos.copy(p); return; }
     if (axis === 1) {
       if (d < 0) { this.pos.y = Math.floor(this.pos.y + d) + 1; this.grounded = true; this.airJumps = 0; }

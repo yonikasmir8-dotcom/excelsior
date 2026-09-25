@@ -57,6 +57,7 @@ export class Hero extends Actor {
     if (this.t('poison') && this.classId === 'rogue' && Math.random() < 0.3 * this.t('poison')) tgt.addStatus('poison', 3, { every: 0.5, onTick: (x) => dealDamage(this, x, 1.2 * this.pow, { quiet: true, roll: { hit: true } }) });
     if (this.t('pickpocket') && Math.random() < 0.08 * this.t('pickpocket')) { const g = 2 + Math.floor(Math.random() * 3 * this.level); G.save.gold += g; popText(tgt.head(), `+${g}g`, 'info', { color: '#ffd23a' }); Audio.play('coin'); }
     if (this.gearStat('meter')) addMeter(amt * 0.02 * this.gearStat('meter') / 100);
+    if (this.tether && this.tether !== this && !this.tether.dead && !this.tether.downed) { const t = this.tether; t.hp = Math.min(t.maxHp, t.hp + amt * 0.3); }
   }
   onHurt(amt, src) { this.cls.onHurt?.(this, amt, src); }
   onBlock(src) {
@@ -69,6 +70,8 @@ export class Hero extends Actor {
   cooldownOf(abId) { return this.cds[abId] || 0; }
   tryCast(ab, T) {
     if (!this.canAct) return false;
+    if (this.has('guarding') && ab.id === 'basic') return false;
+    if (this.has('guarding') && ab.id !== 'basic') { this.cls.mechanic?.end?.(this); this.mechHeld = false; }
     if ((this.cds[ab.id] || 0) > 0 && !T.forced) return false;
     if (this.has('stealth') && ab.id !== 'smoke' && ab.id !== 'basic' && ab.id !== 'shadowstep' && !this.t('shadow_dance')) this.removeStatus('stealth');
     const ok = ab.cast(this, T);
@@ -80,6 +83,10 @@ export class Hero extends Actor {
     return true;
   }
   basicAbility() { return { id: 'basic', ...this.cls.basic }; }
+  // class mechanic on RMB: press, or hold (start/tick/end)
+  mechPress(T) { const m = this.cls.mechanic; if (!m || !this.canAct) return; if (m.hold) { if (!this.mechHeld) { this.mechHeld = true; m.start(this, T); } } else if ((this.cds.mech || 0) <= 0) { if (m.press(this, T) !== false) this.cds.mech = m.cd ?? 0.4; } }
+  mechHold(dt, T) { const m = this.cls.mechanic; if (m?.hold && this.mechHeld) { if (!this.canAct) { this.mechRelease(T); return; } m.tick(this, dt, T); } }
+  mechRelease(T) { const m = this.cls.mechanic; if (m?.hold && this.mechHeld) { this.mechHeld = false; m.end(this, T); } }
   update(dt) {
     for (const k in this.cds) if (this.cds[k] > 0) this.cds[k] = Math.max(0, this.cds[k] - dt * (this.has('haste') ? 1.3 : 1));
     this.dashCd = Math.max(0, (this.dashCd || 0) - dt);

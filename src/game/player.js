@@ -43,7 +43,7 @@ export function updatePlayer(dt) {
   if (Input.locked) { Cam.yaw -= Input.mouse.dx * sens; Cam.pitch = Math.max(-0.9, Math.min(1.2, Cam.pitch + Input.mouse.dy * sens)); }
   if (Input.hit('KeyV')) { Cam.fp = !Cam.fp; G.settings.camera = Cam.fp ? 'first' : 'third'; }
   // switching heroes
-  for (let i = 0; i < 4; i++) if (Input.hit('Digit' + (i + 1)) && G.party[i] && !G.party[i].downed && i !== G.activeIndex) { G.activeIndex = i; Audio.play('panel'); UI.toast(`Now controlling ${G.party[i].name}`); }
+  for (let i = 0; i < 4; i++) if (Input.hit('Digit' + (i + 1)) && G.party[i] && !G.party[i].downed && i !== G.activeIndex) { activeHero().mechRelease?.({}); G.activeIndex = i; Audio.play('panel'); UI.toast(`Now controlling ${G.party[i].name}`); }
   if (h.downed) { const alive = G.party.findIndex((p) => !p.downed); if (alive >= 0) G.activeIndex = alive; }
   const H = activeHero();
   // movement
@@ -59,10 +59,15 @@ export function updatePlayer(dt) {
   // aim
   H.aimTarget = pickTarget(H);
   const T = () => ({ target: H.aimTarget, dir: camForward(), point: aimPoint(), useFate: true });
-  if (Input.mouseDown(0)) { const b = H.basicAbility(); if (!(H.cds.basic > 0)) { if (!H.aimTarget) H.yaw = Math.atan2(camForward().x, camForward().z); H.tryCast(b, T()); } }
+  if (Input.mouseDown(0) && !H.mechHeld) { const b = H.basicAbility(); if (!(H.cds.basic > 0)) { if (!H.aimTarget) H.yaw = Math.atan2(camForward().x, camForward().z); H.tryCast(b, T()); } }
   const list = H.abilityList();
   const tryKey = (key) => { const ab = list.find((a) => a.key === key); if (!ab) return; if (H.cds[ab.id] > 0) { UI.flashCd(ab.id); Audio.play('miss'); return; } if (H.tryCast(ab, T()) === false) UI.toast('No target in range.'); };
-  if (Input.hit(KEYS.Q)) tryKey('Q'); if (Input.hit(KEYS.E)) tryKey('E'); if (Input.hit(KEYS.R)) tryKey('R'); if (Input.mouseHit(2)) tryKey('RMB');
+  if (Input.hit(KEYS.Q)) tryKey('Q'); if (Input.hit(KEYS.E)) tryKey('E'); if (Input.hit(KEYS.R)) tryKey('R'); if (Input.hit('KeyC')) tryKey('C');
+  // class mechanic (right mouse): press or hold
+  H.aimDir = camForward();
+  const rmb = Input.mouseDown(2);
+  if (Input.mouseHit(2)) H.mechPress(T());
+  if (rmb) H.mechHold(dt, T()); else if (H.mechHeld) H.mechRelease(T());
   // fate dice
   if (Input.mouse.wheel && G.combat.dice.length) { G.combat.sel = (G.combat.sel + Input.mouse.wheel + G.combat.dice.length) % G.combat.dice.length; Audio.play('hover'); }
   if (Input.hit('KeyX')) armSelectedDie();
@@ -106,7 +111,7 @@ export function usePotion(h) {
 export function updateCamera(dt) {
   const h = activeHero(); if (!h) return;
   const cam = G.camera;
-  G.fovKick = Math.max(0, (G.fovKick || 0) - dt * 30); const fov = 62 + G.fovKick; if (Math.abs(cam.fov - fov) > 0.05) { cam.fov = fov; cam.updateProjectionMatrix(); }
+  G.fovKick = Math.max(0, (G.fovKick || 0) - dt * 30); const fov = 58 + G.fovKick * 0.5 - (h.has('drawing') ? Math.min(1, (h.drawT || 0) / 1.1) * 14 : 0); if (Math.abs(cam.fov - fov) > 0.05) { cam.fov = fov; cam.updateProjectionMatrix(); }
   const shake = FX.shake; FX.shake = Math.max(0, FX.shake - dt * 2.5);
   const sx = (Math.random() - 0.5) * shake * 0.6, sy = (Math.random() - 0.5) * shake * 0.6;
   if (Cam.fp && !G.inBreak) {

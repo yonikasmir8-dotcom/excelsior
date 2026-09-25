@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { G, activeHero } from '../core/state.js';
 import { enemiesNear, nearestEnemy, revive } from './combat.js';
+import { setTether } from './classes.js';
 import { popText } from './effects.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -60,6 +61,7 @@ export function updateCompanion(h, dt, slot) {
   // leash to leader
   if (h.pos.distanceTo(lead.pos) > 26) { const back = lead.pos.clone().sub(h.pos); back.y = 0; h.moveInput.copy(back.normalize()); }
   if (!h.canAct) return;
+  if (useMechanic(h, tgt, foes, dist, dt)) return;
   const T = { target: tgt, dir: tgt.center().sub(h.center()).normalize(), point: tgt.pos.clone(), ai: true };
   if (h.aiCd <= 0) {
     const ab = pickAbility(h, tgt, foes, dist);
@@ -68,6 +70,28 @@ export function updateCompanion(h, dt, slot) {
   const basic = h.basicAbility();
   if (dist <= (basic.range || 2.5) + tgt.radius + 0.5 && !(h.cds.basic > 0)) h.tryCast(basic, T);
 }
+
+// Companions use their class mechanic too, so every class feels distinct even when you're not driving it.
+function useMechanic(h, tgt, foes, dist, dt) {
+  const T = { target: tgt, dir: tgt.center().sub(h.center()).normalize(), point: tgt.pos.clone() };
+  switch (h.classId) {
+    case 'fighter': {
+      const threat = G.entities.find((e) => e.team === 'enemy' && !e.dead && e.target === h && e.windup > 0 && e.windup < 0.32 && e.pos.distanceTo(h.pos) < 4 + e.radius);
+      if (threat && !h.mechHeld) { h.faceTo(threat.pos, 1); h.mechPress(T); h.guardUntil = G.time + 0.5; }
+      if (h.mechHeld) { h.mechHold(dt, T); if (G.time > (h.guardUntil || 0)) h.mechRelease(T); return true; }
+      return false; }
+    case 'sorcerer': if (G.time > (h.nextAttune || 0)) { h.nextAttune = G.time + 5 + Math.random() * 4; h.mechPress(T); } return false;
+    case 'cleric': if (G.time > (h.nextTether || 0)) { h.nextTether = G.time + 4; let low = null, lv = 2; for (const a of G.party) { if (a.dead || a.downed) continue; const v = a.hp / a.maxHp + (a === h ? 0.15 : 0); if (v < lv) { lv = v; low = a; } } if (low) setTether(h, low); } return false;
+    case 'artificer': { const near = G.entities.filter((e) => e.isMinion && e.owner === h && !e.dead && e.kind === 'turret' && enemiesNear(e.pos, 4.5, 'party').length >= 2); if (near.length && e_(h)) { h.mechPress(T); return true; } return false; }
+    case 'rogue': if ((h.tumbleCharges ?? 2) > 0 && dist < 7 && dist > 2 && Math.random() < dt * 0.8) { h.mechPress(T); return true; } return false;
+    case 'ranger':
+      if (h.mechHeld) { h.faceTo(tgt.pos, 1); h.mechHold(dt, T); if ((h.drawT || 0) >= 1.1) h.mechRelease(T); return true; }
+      if (dist > 9 && (h.tgtDraw || 0) < G.time && Math.random() < dt * 0.4) { h.tgtDraw = G.time + 4; h.mechPress(T); return true; }
+      return false;
+  }
+  return false;
+}
+function e_(h) { return (h.cds.mech || 0) <= 0; }
 
 function jumpIfBlocked(h) { if (h.blocked && h.grounded && h.moveInput.lengthSq() > 0.1) { h.jump(); } h.blocked = false; }
 
