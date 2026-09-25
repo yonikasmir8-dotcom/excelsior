@@ -93,7 +93,7 @@ export function telegraph(pos, radius, delay, color, onDone, owner = null) {
   g.position.copy(pos); g.position.y = (G.world ? G.world.groundBelow(pos.x, pos.y + 1, pos.z) : pos.y) + 0.06;
   g.scale.setScalar(radius);
   const f = new Fx(g, delay);
-  f.owner = owner;
+  f.owner = owner; f.kind = 'telegraph'; f.pos = g.position; f.radius = radius; f.hostile = !owner || owner.team === 'enemy';
   f.update = function (dt) {
     this.t += dt; const k = Math.min(1, this.t / this.life);
     inner.scale.setScalar(k); edge.material.opacity = 0.5 + 0.5 * Math.sin(this.t * 20);

@@ -135,7 +135,10 @@ export function buildDialogues(A) {
       { t: 'Goodbye.', end: true },
     ] },
     past: { who: 'ghost', text: 'The Tavern was here before I was. Before Maren, even, and she has been here forever. Some nights I hear a loom clacking in the attic. There is no attic.', next: 'n0' },
-    trials: { who: 'ghost', text: () => S().party.level >= 8 ? 'You are seasoned enough. Class Trials appear in the Rifts from Depth 3 onward: harder fights that end with a Legendary for the class being tested.' : 'Come back when your party is level 8. Trials are not for fresh faces.', next: 'n0' },
+    trials: { who: 'ghost', text: () => S().party.level >= 6 ? 'Each class has three Trials, one each at levels 6, 14 and 22. Every Trial is a tailored Rift with a Champion at its heart, and ends in that class\'s Legendary. Which calling will you test?' : 'Come back when your party is level 6. Trials are not for fresh faces.', choices: [
+      ...['fighter', 'sorcerer', 'artificer', 'cleric', 'rogue', 'ranger'].map((c) => ({ t: () => A.trialLabel(c), if: () => A.trialAvailable(c), do: () => A.startTrial(c), end: true })),
+      { t: 'Not yet.', go: 'n0' },
+    ] },
     teamups: { who: 'ghost', text: () => `When two heroes use the right abilities close together, the combination creates something new. Fire and grenades. Smoke and arrows. Turrets and lightning. You have discovered ${S().teamups.length} of 14. Open the Journal [J] to see which.`, next: 'n0' },
   };
 

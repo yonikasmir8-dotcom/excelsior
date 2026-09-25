@@ -30,6 +30,9 @@ function spiral(boss, n, color, dmg, speed = 12) {
   }
 }
 function summon(boss, types, n) {
+  const near = G.entities.filter((e) => e.team === 'enemy' && !e.dead && !e.isBoss && e.pos.distanceTo(boss.pos) < 30).length;
+  if (near >= 4) { for (const h of heroes()) circleAttack(boss, h.pos.clone(), 3, 1.1, '3d8+3', 0xff3a8a); return; }
+  n = Math.min(n, 4 - near);
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2; const p = boss.pos.clone().add(V(Math.cos(a) * 6, 1, Math.sin(a) * 6));
     p.y = G.world.groundBelow(p.x, p.y + 6, p.z) + 0.1;
@@ -39,7 +42,7 @@ function summon(boss, types, n) {
 
 export const BOSSES = {
   hollowking: {
-    name: 'The Hollow King', type: 'skeleton', hpMult: 22, scale: 2.4, title: 'Lich of the Forgotten Crown',
+    name: 'The Hollow King', type: 'skeleton', hpMult: 10, scale: 2.4, title: 'Lich of the Forgotten Crown',
     skin: { body: 0x3a2a4a, legs: 0x2a1a3a, accent: 0xffcc30, skin: 0xe8e0c8 }, hat: 'crown', weapon: 'greatsword', extras: ['cape', 'shoulder'],
     phases: ['The King stirs...', 'THE CROWN REMEMBERS!', 'I WILL NOT BE FORGOTTEN!'],
     pattern(b, ph) {
@@ -53,7 +56,7 @@ export const BOSSES = {
     },
   },
   null: {
-    name: 'NULL', type: 'mime', hpMult: 20, scale: 1.8, title: 'The Hero Eraser',
+    name: 'NULL', type: 'mime', hpMult: 9, scale: 1.8, title: 'The Hero Eraser',
     skin: { body: 0xf0f0f0, legs: 0xe0e0e0, accent: 0x111111, skin: 0x111111, eye: 0xffffff }, hat: 'mask', weapon: 'baton', extras: ['cape'],
     phases: ['Nobody will remember you.', 'DELETING HEROES...', 'I AM THE BLANK PAGE!'],
     pattern(b, ph) {
@@ -67,7 +70,7 @@ export const BOSSES = {
     },
   },
   caretaker: {
-    name: 'CARETAKER', type: 'sentry', hpMult: 26, scale: 3.2, title: 'Ship Intelligence of the Asterion', flying: true,
+    name: 'CARETAKER', type: 'sentry', hpMult: 11, scale: 3.2, title: 'Ship Intelligence of the Asterion', flying: true,
     skin: { body: 0xe0e8f0, accent: 0xff3040 }, glow: 0xff3040,
     phases: ['Crew wellness: suboptimal. Correcting.', 'CORRECTIVE MEASURES ESCALATED.', 'I WILL KEEP THEM ALL. FOREVER.'],
     shieldWhileAdds: true,
@@ -82,7 +85,7 @@ export const BOSSES = {
     },
   },
   warden: {
-    name: 'Rift Warden', type: 'unwoven', hpMult: 16, scale: 2, title: 'Guardian of a Frayed Realm',
+    name: 'Rift Warden', type: 'unwoven', hpMult: 7, scale: 2, title: 'Guardian of a Frayed Realm',
     skin: { body: 0x8a2a8a, legs: 0x4a1a4a, accent: 0xff3a8a }, hat: 'antlers', weapon: 'greatsword', extras: ['cape'],
     phases: ['This realm is ours now.', 'THE SEAMS SPLIT!', 'UNRAVEL WITH IT!'],
     pattern(b, ph) {
@@ -94,7 +97,7 @@ export const BOSSES = {
     },
   },
   unraveller: {
-    name: 'THE UNRAVELLER', type: 'unwoven', hpMult: 40, scale: 3.2, title: 'That Which Unmakes',
+    name: 'THE UNRAVELLER', type: 'unwoven', hpMult: 16, scale: 3.2, title: 'That Which Unmakes',
     skin: { body: 0xf8f8f8, legs: 0xf0f0f0, accent: 0xff3a8a, skin: 0xffffff, eye: 0xff3a8a }, hat: 'antlers', weapon: 'greatsword', extras: ['cape', 'wings'],
     phases: ['You led me here. Thank you.', 'EVERY THREAD. EVERY REALM.', 'THE KNOT COMES UNDONE!', 'I... AM... FORGOTTEN...'],
     pattern(b, ph) {
@@ -142,7 +145,7 @@ export function spawnBoss(key, pos, level) {
     if (!B.flying && dist > 5) e.moveInput.copy(d.normalize()).multiplyScalar(0.7);
     if (B.flying) e.hoverY = t.pos.y + 4;
     if (B.shieldWhileAdds) {
-      const adds = G.entities.filter((x) => x.team === 'enemy' && !x.dead && !x.isBoss).length;
+      const adds = G.entities.filter((x) => x.team === 'enemy' && !x.dead && !x.isBoss && x.pos.distanceTo(e.pos) < 30).length;
       if (adds > 0 && !e.has('shielded')) popText(e.head(), 'SHIELDED — destroy the adds!', 'info', { color: '#40ffd0' });
       if (adds > 0) e.addStatus('shielded', 0.5); e.resist = adds > 0 ? { fire: 0.2, lightning: 0.2, pierce: 0.2, slash: 0.2, blunt: 0.2, holy: 0.2, tech: 0.2, shadow: 0.2, blast: 0.2, bite: 0.2 } : {};
     }

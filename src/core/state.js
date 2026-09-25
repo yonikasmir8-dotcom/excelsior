@@ -16,7 +16,7 @@ export const G = {
   inDialogue: false,
   combat: null,         // combat session state (dice hand, style, meter)
   save: null,           // persistent save data object
-  settings: { volume: 0.6, music: 0.5, sens: 1, postfx: true, camera: 'third' },
+  settings: { volume: 0.6, music: 0.5, sens: 1, postfx: true, camera: 'third', difficulty: 'normal' },
   debug: false,
 };
 

@@ -103,6 +103,9 @@ const API = {
   dismiss: (cid) => { const S = G.save; const m = S.members.find((x) => x.companionId === cid); if (!m) return; S.active = S.active.filter((x) => x !== m.id); setTimeout(() => API.reloadTavern(), 50); },
   advance: (realm, fromStage) => { const r = G.save.realms[realm]; if (r && r.stage === fromStage) { r.stage = fromStage + 1; Audio.play('quest'); refreshObjective(realm); } },
   ending: (kind) => { G.save.ending = kind; G.save.flags.ending = 1; G.pendingEnding = kind; API.saveNow(); },
+  trialLabel: (c) => { const t = (G.save.trials?.[c] || 0) + 1; return `The ${CLASSES[c].name}'s Trial ${['I', 'II', 'III'][t - 1] || ''} (needs level ${[6, 14, 22][t - 1]})`; },
+  trialAvailable: (c) => { const t = (G.save.trials?.[c] || 0); return t < 3 && G.save.party.level >= [6, 14, 22][t] && G.save.active.some((id) => G.save.members.find((m) => m.id === id)?.classId === c); },
+  startTrial: (c) => { const tier = (G.save.trials?.[c] || 0) + 1; setTimeout(() => UI.realmIntro('rift', () => travel('rift', { trial: { cls: c, tier } })), 300); },
   // UI-facing
   grantXp: (n) => grantXp(n),
   slotInfo, deleteSave, saveSettings,
@@ -176,7 +179,7 @@ addEventListener('keydown', (e) => {
 on('locationLoaded', () => { if (G.titleLights) { G.titleLights.forEach((l) => G.scene.remove(l)); G.titleLights = null; } });
 
 // ── loop ──
-let last = performance.now(), saveT = 0, titleT = 0;
+let last = performance.now(), saveT = 0, titleT = 0, frameNo = 0;
 function frame(now) {
   requestAnimationFrame(frame);
   let dtReal = Math.min(0.05, (now - last) / 1000); last = now;
@@ -193,7 +196,17 @@ function frame(now) {
       G.time += dt;
       let slot = 0;
       G.party.forEach((h, i) => { if (i !== G.activeIndex) updateCompanion(h, dt, slot++); });
-      for (const e of G.entities.slice()) if (!e.dead) e.update(dt);
+      const me = activeHero(); const far2 = 75 * 75; frameNo++;
+      for (const e of G.entities.slice()) {
+        if (e.dead) continue;
+        // sleep distant idle enemies: skip most updates and hide them past the fog
+        if (e.team === 'enemy' && !e.aggro && me) {
+          const d2 = e.pos.distanceToSquared(me.pos);
+          if (e.model) e.model.root.visible = d2 < 110 * 110;
+          if (d2 > far2 && (frameNo + e.id) % 8 !== 0) continue;
+        }
+        e.update(dt);
+      }
       updateEffects(dt); updateCombat(dt); updatePickups();
       G.realm?.tick?.(dt);
       G.save.playTime += dt;
@@ -213,3 +226,5 @@ try { makePortraits(); } catch (e) { console.warn('portraits failed', e); }
 UI.title();
 requestAnimationFrame(frame);
 window.__G = G; window.__API = API; window.__UI = UI; // debug handles
+import * as _ai from './game/ai.js'; import * as _fx from './game/effects.js'; import * as _cb from './game/combat.js'; import * as _rl from './game/realms.js'; import * as _bs from './game/bosses.js';
+window.__M = { ai: _ai, fx: _fx, combat: _cb, realms: _rl, bosses: _bs };

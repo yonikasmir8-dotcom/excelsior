@@ -124,6 +124,7 @@ export const UI = {
     const range = (k, min, max, step) => h('input', { type: 'range', min, max, step, value: S[k], oninput: (e) => { S[k] = +e.target.value; Audio.applyVolume(); UI.api.saveSettings(); } });
     UI.openModal(h('div', {}, h('h2', {}, 'Settings'),
       row('Sound FX', range('volume', 0, 1, 0.05)), row('Music', range('music', 0, 1, 0.05)), row('Mouse sensitivity', range('sens', 0.3, 2.5, 0.05)),
+      row('Difficulty', h('select', { id: 'diffSel', style: 'font-family:var(--display);font-size:18px;padding:4px', onchange: (e) => { S.difficulty = e.target.value; UI.api.saveSettings(); } }, ['story', 'normal', 'hard'].map((d) => h('option', { value: d, selected: S.difficulty === d ? '' : null }, { story: 'Story (relaxed)', normal: 'Normal', hard: 'Hard (brutal)' }[d])))),
       row('Comic ink shader', h('input', { type: 'checkbox', checked: S.postfx ? '' : null, onchange: (e) => { S.postfx = e.target.checked; UI.api.saveSettings(); } })),
       h('p', { class: 'muted' }, 'Turn off the comic shader if the game runs slowly.')));
   },
@@ -291,7 +292,7 @@ export const UI = {
       const choices = (n.choices || []).filter((c) => !c.if || c.if());
       if (!choices.length) choices.push(n.next ? { t: 'Continue ▸', go: n.next } : { t: n.end ? 'End' : 'Continue ▸', end: true });
       choices.forEach((c, i) => {
-        const label = h('button', { onclick: () => pick(c) }, `${i + 1}. `, c.check ? h('span', { class: 'chk' }, `[${c.check.skill.toUpperCase()} DC ${c.check.dc}] `) : '', c.t.replace(/^\[[^\]]+\]\s*/, ''));
+        const label = h('button', { onclick: () => pick(c) }, `${i + 1}. `, c.check ? h('span', { class: 'chk' }, `[${c.check.skill.toUpperCase()} DC ${c.check.dc}] `) : '', (typeof c.t === 'function' ? c.t() : c.t).replace(/^\[[^\]]+\]\s*/, ''));
         ch.append(label);
       });
       dlg._keys = (e) => { const k = parseInt(e.key); if (k >= 1 && k <= choices.length) pick(choices[k - 1]); if ((e.key === ' ' || e.key === 'Enter') && choices.length === 1) pick(choices[0]); };
@@ -529,9 +530,9 @@ export const UI = {
   },
   riftReward() {
     const S = G.save;
-    if (S.riftDepth >= 3 && S.party.level >= 8) {
+    if (S.riftDepth >= 3 && S.riftDepth % 3 === 0) {
       const it = UI.api.randomLegendary();
-      setTimeout(() => { S.inventory.push(it); S.stats.legendary++; UI.banner('CLASS TRIAL COMPLETE', `Legendary earned: ${it.name}`); Audio.play('loot'); }, 2500);
+      setTimeout(() => { S.inventory.push(it); S.stats.legendary++; UI.banner(`DEPTH ${S.riftDepth} MILESTONE`, `Legendary earned: ${it.name}`); Audio.play('loot'); }, 2500);
     }
   },
   wipe(killer, lost, cb) {

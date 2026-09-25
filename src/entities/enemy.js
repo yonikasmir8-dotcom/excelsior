@@ -10,6 +10,7 @@ import { emit } from '../core/events.js';
 import { Audio } from '../core/audio.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
+export const DIFF = { story: { hp: 0.7, dmg: 0.55 }, normal: { hp: 1, dmg: 1 }, hard: { hp: 1.35, dmg: 1.4 } };
 
 export class Enemy extends Actor {
   constructor(typeKey, pos, level, opts = {}) {
@@ -25,13 +26,14 @@ export class Enemy extends Actor {
     }
     if (opts.skin) Object.assign(spec.colors, opts.skin);
     const L = level;
-    let hp = T.hp * (1 + 0.3 * (L - 1));
+    const diff = DIFF[G.settings.difficulty || 'normal'];
+    let hp = T.hp * (1 + 0.3 * (L - 1)) * 2.4 * diff.hp;
     if (cap) hp *= 3.2 + cap.rank * 0.6;
     if (opts.hpMult) hp *= opts.hpMult;
     super({ name: cap ? fullName(cap) : T.name, team: 'enemy', pos, hp: Math.round(hp), ac: T.ac + Math.floor(L / 5) + (cap ? 1 : 0), atk: 2 + Math.floor(L / 3),
       speed: T.speed, model: spec, radius: 0.4 * (spec.scale || 1), height: 1.8 * (spec.scale || 1) * (spec.kind === 'beast' ? 0.7 : 1), flying: T.flying });
     this.type = typeKey; this.def = T; this.level = L;
-    this.pow = (1 + 0.14 * (L - 1)) * (cap ? 1.35 : 1) * (opts.powMult || 1);
+    this.pow = (1 + 0.14 * (L - 1)) * (cap ? 1.35 : 1) * (opts.powMult || 1) * 1.7 * diff.dmg;
     this.home = pos.clone(); this.spawn = pos.clone();
     this.ai = T.ai; this.aggro = false; this.atkCd = 1 + Math.random(); this.windup = 0; this.action = null;
     this.isElite = !!T.elite; this.knockResist = T.knockResist || 0;
@@ -155,7 +157,7 @@ export class Enemy extends Actor {
   }
   melee(tgt) {
     this.windup = this.def.attack === 'bite' ? 0.35 : 0.5; this.model.flash(0xff4020, this.windup);
-    this.atkCd = 1.3 + Math.random() * 0.6;
+    this.atkCd = 1.05 + Math.random() * 0.5;
     this.action = () => {
       this.model.play(this.def.attack === 'bite' ? 'bite' : 'attack', 0.3); Audio.play('swing');
       this.knock.add(this.forward().multiplyScalar(4));

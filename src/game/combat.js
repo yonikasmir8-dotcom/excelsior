@@ -275,7 +275,7 @@ const recentTags = []; // {tag, pos, time, by}
 export function markTag(tag, pos, by) {
   if (!by || by.team !== 'party') return;
   const now = G.time;
-  for (let i = recentTags.length - 1; i >= 0; i--) if (now - recentTags[i].time > 4) recentTags.splice(i, 1);
+  for (let i = recentTags.length - 1; i >= 0; i--) if (now - recentTags[i].time > 6) recentTags.splice(i, 1);
   for (const r of recentTags) {
     if (r.by === by && !by.isMinion) continue;
     if (r.pos.distanceTo(pos) > 12) continue;

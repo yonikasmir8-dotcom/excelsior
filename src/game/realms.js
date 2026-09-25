@@ -16,6 +16,7 @@ import { clearEffects, initEffects, burst, popText, ring, zone, timed } from './
 import { captainsFor, ensureWarband } from './nemesis.js';
 import { summonPet, CLASSES } from './classes.js';
 import { newCombatState, endCombat } from './combat.js';
+import { LEGENDARIES, makeLegendary } from './loot.js';
 import { UI } from '../ui/ui.js';
 
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -29,6 +30,7 @@ export const REALMS = {
   loom: { name: 'The Loom', kind: 'loom', style: 'loom', music: 'loom', sky: [0xffffff, 0xffd0e0], fog: [0xfff0f4, 50, 160], sun: 0xffffff, amb: 0xc0b0c0, base: 10, genre: 'Finale', blurb: 'Where every thread meets.' },
 };
 
+export const TRIAL_MODS = { fighter: ['elite', 'swift', 'bloodmoon'], sorcerer: ['glass', 'volatile', 'fate'], artificer: ['nemesis', 'elite', 'volatile'], cleric: ['glass', 'vampire', 'swift'], rogue: ['swift', 'nemesis', 'glass'], ranger: ['lowgrav', 'elite', 'swift'] };
 export const RIFT_MODS = [
   { id: 'lowgrav', name: 'Low Gravity', desc: 'Everyone jumps higher and falls slower.', apply: (st) => { st.grav = 0.45; } },
   { id: 'glass', name: 'Glass Cannons', desc: 'Everyone deals and takes 50% more damage.', apply: (st) => { st.glass = true; } },
@@ -217,13 +219,14 @@ function setupRealm(id, L, opts) {
   if (id === 'rift') {
     const n = 1 + Math.min(3, Math.floor(S.riftDepth / 2));
     const mods = []; const pool = RIFT_MODS.slice();
-    for (let i = 0; i < n; i++) mods.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    if (opts.trial) { R.trial = opts.trial; for (const mid of TRIAL_MODS[opts.trial.cls].slice(0, opts.trial.tier)) mods.push(RIFT_MODS.find((m) => m.id === mid)); R.level = Math.max(R.level, S.party.level + opts.trial.tier); G.realm.name = `${CLASSES[opts.trial.cls].name}'s Trial ${['I', 'II', 'III'][opts.trial.tier - 1]}`; }
+    else for (let i = 0; i < n; i++) mods.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
     R.mods = mods; mods.forEach((m) => m.apply(R.state));
   }
   if (R.state.grav) G.party.forEach((h) => (h.gravScale = R.state.grav));
   // enemies
   const heavy = id === 'loom' ? 0 : 1;
-  (L.enemySpots || []).forEach((p, i) => { if (Math.random() < 0.8 * heavy) spawnGroup(p, 2 + Math.floor(Math.random() * 3), lvl, R.pool); });
+  (L.enemySpots || []).forEach((p, i) => { if (Math.random() < 0.8 * heavy) spawnGroup(p, 3 + Math.floor(Math.random() * 3), lvl, R.pool); });
   // captains / nemeses
   if (id !== 'loom') {
     ensureWarband(id === 'rift' ? 'rift' : id, lvl);
@@ -400,7 +403,7 @@ function setupAsterion(L) {
 function setupRift(L) {
   const S = G.save; const R = G.realm;
   R.closed = 0;
-  R.objectives = [() => `Close the Rift tears (${R.closed}/3).`, 'Defeat the Rift Warden.', 'The rift is stable. Go deeper, or return home.'];
+  R.objectives = [() => `Close the Rift tears (${R.closed}/3).`, R.trial ? 'Defeat the Trial Champion.' : 'Defeat the Rift Warden.', 'The rift is stable. Go deeper, or return home.'];
   R.stage = 0;
   S.realms.rift.stage = 0; S.realms.rift.done = false;
   UI.toast('Modifiers: ' + R.mods.map((m) => m.name).join(', '));
@@ -412,12 +415,21 @@ function setupRift(L) {
         R.busy = false; closed = true; R.closed++;
         const B = G.world.palette.findIndex((p) => p && p.c === 0x3a3a3a); for (const b of t.blocks) G.world.set(b[0], b[1], b[2], B);
         Audio.play('holy'); UI.grantXp(60 + R.level * 8);
-        if (R.closed >= 3) { S.realms.rift.stage = 1; refreshObjective('rift'); spawnBoss('warden', L.bossPos.clone(), R.level + 1); } else refreshObjective('rift');
+        if (R.closed >= 3) { S.realms.rift.stage = 1; refreshObjective('rift'); const b = spawnBoss('warden', L.bossPos.clone(), R.level + 1); if (R.trial) { b.name = `Champion of the ${CLASSES[R.trial.cls].name}'s Trial`; b.title = ['The First Test', 'The Second Test', 'The Final Test'][R.trial.tier - 1]; b.maxHp *= 1 + R.trial.tier * 0.4; b.hp = b.maxHp; } } else refreshObjective('rift');
       });
     } });
   });
   onScript('bossDefeated', ({ key }) => {
     if (key !== 'warden') return;
+    if (R.trial) {
+      const { cls, tier } = R.trial; S.trials = S.trials || {}; S.trials[cls] = Math.max(S.trials[cls] || 0, tier);
+      const L = LEGENDARIES.filter((l) => l.cls === cls)[tier - 1];
+      const it = makeLegendary(L.id, R.level); S.inventory.push(it); S.stats.legendary++;
+      UI.grantXp(500 + R.level * 40); Audio.play('levelup');
+      UI.banner(`TRIAL ${['I', 'II', 'III'][tier - 1]} COMPLETE`, `${CLASSES[cls].name} Legendary earned: ${it.name}. ${it.desc}`, 4500);
+      S.realms.rift.stage = 2; R.objectives[2] = 'Trial complete. Return to the Tavern.'; refreshObjective('rift'); G.saveNow?.();
+      return;
+    }
     S.riftDepth++; S.riftBest = Math.max(S.riftBest, S.riftDepth); S.realms.rift.stage = 2; refreshObjective('rift');
     UI.grantXp(250 + R.level * 30); S.gold += 50 + S.riftDepth * 20;
     UI.banner(`DEPTH ${S.riftDepth} CLEARED`, 'The rift stabilises. A deeper tear opens nearby.');

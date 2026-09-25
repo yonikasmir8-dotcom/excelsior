@@ -22,6 +22,17 @@ export function updateCompanion(h, dt, slot) {
     else { downed.reviveT = (downed.reviveT || 0) + dt * (h.t('jury_rig') ? 2 : 1); if (downed.reviveT > 2.2) { downed.reviveT = 0; revive(downed); } }
     jumpIfBlocked(h); return;
   }
+  // step out of enemy telegraphs (companions play fair too)
+  for (const f of G.effects) {
+    if (f.kind !== 'telegraph' || !f.hostile) continue;
+    const d = h.pos.clone().sub(f.pos); d.y = 0; const dist = d.length();
+    if (dist < f.radius + 0.8) {
+      if (dist < 0.1) d.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+      h.moveInput.copy(d.normalize());
+      if (f.t > f.life * 0.55 && Math.random() < 0.5) h.dash(h.moveInput);
+      jumpIfBlocked(h); return;
+    }
+  }
   const foes = enemiesNear(lead.pos, 22, 'party').filter((e) => e.aggro || e.pos.distanceTo(h.pos) < 8);
   if (!foes.length) {
     // follow in formation
