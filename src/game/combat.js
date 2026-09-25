@@ -30,7 +30,7 @@ export function diceHandSize() {
 }
 export function startCombat() {
   const C = G.combat; if (C.active) { C.idle = 0; return; }
-  C.active = true; C.idle = 0; C.style = 0; C.secondChanceUsed = false; C.best = 0; C.kills = 0; C.teamupsThisFight = []; C.recent = [];
+  C.active = true; C.idle = 0; C.style = 0; C.secondChanceUsed = false; C.prismUsed = false; C.best = 0; C.kills = 0; C.teamupsThisFight = []; C.recent = [];
   const loaded = G.party.some((h) => h.t?.('loaded_dice'));
   C.dice = []; for (let i = 0; i < diceHandSize(); i++) C.dice.push(loaded ? Math.max(5, d20()) : d20());
   C.sel = 0; C.armed = null;
@@ -229,7 +229,7 @@ export function kill(tgt, src, opts = {}) {
   if (tgt.dead || tgt.downed) return;
   if (tgt.team === 'party' && !tgt.isMinion) {
     const saver = G.party.find((h) => h.t && h.t('second_chance') && !h.downed && !G.combat.secondChanceUsed);
-    if (saver) { G.combat.secondChanceUsed = true; tgt.hp = 1; tgt.addStatus('invuln', 1.5); popText(tgt.head(), 'SECOND CHANCE!', 'heal'); return; }
+    if (saver) { G.combat.secondChanceUsed = true; tgt.hp = 1; tgt.addStatus('invuln', 1.5); popText(tgt.head(), 'Second chance', 'heal'); return; }
     tgt.hp = 0; tgt.downed = true; tgt.downT = 0; tgt.statuses.clear();
     popText(tgt.head(), 'Fallen', 'hurt'); Audio.play('down');
     emit('heroDown', { hero: tgt, by: src });
@@ -326,7 +326,7 @@ export function triggerTeamUp(tu, pos, a, b) {
     case 'oath': for (const h of G.party) h.addStatus('oath', 3); burst(pos, 0xfff080, 40, 6, 1, 0.3, 2); break;
     case 'judgement': case 'overcharge':
       for (const e of foes) dealDamage(src, e, 24 * lvlPow, { type: 'holy', roll: { hit: true }, knock: 10 });
-      if (tu.id === 'overcharge') for (const h of G.party) { for (const k in h.cds) h.cds[k] = 0; popText(h.head(), 'RESET!', 'info'); }
+      if (tu.id === 'overcharge') for (const h of G.party) { for (const k in h.cds) h.cds[k] = 0; popText(h.head(), 'Cooldowns reset', 'info'); }
       break;
     case 'trapped': for (const e of foes) { if (e.hp / e.maxHp < 0.4 && !e.isBoss) dealDamage(src, e, e.hp + 1, { type: 'shadow', roll: { hit: true, crit: true, roll: 20 }, word: 'shadow' }); else dealDamage(src, e, 20 * lvlPow, { type: 'shadow', roll: { hit: true } }); } break;
     case 'pack': for (const e of foes.slice(0, 4)) { e.addStatus('stun', 2.2); dealDamage(src, e, 16 * lvlPow, { type: 'bite', roll: { hit: true } }); } break;

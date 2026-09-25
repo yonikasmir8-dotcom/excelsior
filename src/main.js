@@ -1,5 +1,10 @@
 // The Forgotten Tavern — entry point. Boots the renderer, wires the game API, runs the loop.
 import * as THREE from 'three';
+import '@fontsource/cinzel/600.css';
+import '@fontsource/cinzel/700.css';
+import '@fontsource/cormorant-garamond/500.css';
+import '@fontsource/cormorant-garamond/600.css';
+import '@fontsource/cormorant-garamond/500-italic.css';
 import { G, activeHero } from './core/state.js';
 import { Input } from './core/input.js';
 import { Audio } from './core/audio.js';
@@ -106,6 +111,10 @@ const API = {
   trialLabel: (c) => { const t = (G.save.trials?.[c] || 0) + 1; return `The ${CLASSES[c].name}'s Trial ${['I', 'II', 'III'][t - 1] || ''} (needs level ${[6, 14, 22][t - 1]})`; },
   trialAvailable: (c) => { const t = (G.save.trials?.[c] || 0); return t < 3 && G.save.party.level >= [6, 14, 22][t] && G.save.active.some((id) => G.save.members.find((m) => m.id === id)?.classId === c); },
   startTrial: (c) => { const tier = (G.save.trials?.[c] || 0) + 1; setTimeout(() => UI.realmIntro('rift', () => travel('rift', { trial: { cls: c, tier } })), 300); },
+  latestSlot: () => { let best = null, bt = -1; for (const i of [1, 2, 3]) { const s = loadGame(i); if (s && (s.savedAt || s.created) > bt) { bt = s.savedAt || s.created; best = i; } } return best; },
+  canQuit: () => !!window.electronAPI,
+  quit: () => { API.saveNow(); window.electronAPI?.quit(); },
+  version: __APP_VERSION__,
   // UI-facing
   grantXp: (n) => grantXp(n),
   slotInfo, deleteSave, saveSettings,

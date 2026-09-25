@@ -48,7 +48,7 @@ export const BOSSES = {
     pattern(b, ph) {
       const P = [
         () => { b.model.play('slam', 1); for (const h of heroes()) circleAttack(b, h.pos.clone(), 3.2, 1.2, '3d8+4', 0x8040ff); },
-        () => { b.model.play('cast', 1); popText(b.head(), 'RISE, MY KNIGHTS', 'speech'); summon(b, ['skeleton', 'goblin'], 2 + ph); },
+        () => { b.model.play('cast', 1); popText(b.head(), 'Rise, my knights.', 'speech'); summon(b, ['skeleton', 'goblin'], 2 + ph); },
         () => { b.model.play('slam', 1); for (let k = 1; k <= 4; k++) setTimeout(() => { if (b.dead) return; for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2 + k * 0.3; circleAttack(b, b.pos.clone().add(V(Math.cos(a) * k * 3.5, 0, Math.sin(a) * k * 3.5)), 1.8, 0.8, '2d8+2', 0xffcc30); } }, k * 350); },
         () => { b.model.play('cast', 1); spiral(b, 14 + ph * 6, 0x8040ff, '2d6+3'); },
       ];
@@ -61,8 +61,8 @@ export const BOSSES = {
     phases: ['Nobody will remember you.', 'DELETING HEROES...', 'I AM THE BLANK PAGE!'],
     pattern(b, ph) {
       const P = [
-        () => { b.model.play('cast', 1); popText(b.head(), 'ERASE', 'speech'); for (const h of heroes()) circleAttack(b, h.pos.clone(), 2.8, 1.1, '3d8+3', 0xf0f0f0, (q) => debris(G.world.explode(q.x, q.y - 0.5, q.z, 2.2, G.realm.protect))); },
-        () => { popText(b.head(), 'MEET MY FANS', 'speech'); summon(b, ['mime', 'punk', 'goon'], 2 + ph); },
+        () => { b.model.play('cast', 1); popText(b.head(), 'Be forgotten.', 'speech'); for (const h of heroes()) circleAttack(b, h.pos.clone(), 2.8, 1.1, '3d8+3', 0xf0f0f0, (q) => debris(G.world.explode(q.x, q.y - 0.5, q.z, 2.2, G.realm.protect))); },
+        () => { popText(b.head(), 'Meet my admirers.', 'speech'); summon(b, ['mime', 'punk', 'goon'], 2 + ph); },
         () => { b.model.play('spin', 1); spiral(b, 20 + ph * 8, 0x111111, '2d6+3', 14); },
         () => { const t = heroes()[0]; if (!t) return; burst(b.center(), 0x111111, 30, 5); const p = t.pos.clone().add(V(2, 0.5, 2)); b.pos.copy(p); Audio.play('shadow'); circleAttack(b, b.pos.clone(), 4, 0.7, '3d10+4', 0x111111); },
       ];
@@ -76,10 +76,10 @@ export const BOSSES = {
     shieldWhileAdds: true,
     pattern(b, ph) {
       const P = [
-        () => { popText(b.head(), 'DEPLOYING SENTRIES', 'speech'); summon(b, ['sentry', 'husk'], 2 + ph); },
-        () => { const n = 10 + ph * 4; for (let i = 0; i < n; i++) { const p = b.pos.clone().add(V((Math.random() - .5) * 26, 0, (Math.random() - .5) * 26)); circleAttack(b, p, 2.4, 1 + Math.random() * 0.8, '2d8+3', 0x40ffd0); } popText(b.head(), 'VENTING PLASMA', 'speech'); },
+        () => { popText(b.head(), 'Deploying sentries.', 'speech'); summon(b, ['sentry', 'husk'], 2 + ph); },
+        () => { const n = 10 + ph * 4; for (let i = 0; i < n; i++) { const p = b.pos.clone().add(V((Math.random() - .5) * 26, 0, (Math.random() - .5) * 26)); circleAttack(b, p, 2.4, 1 + Math.random() * 0.8, '2d8+3', 0x40ffd0); } popText(b.head(), 'Venting plasma.', 'speech'); },
         () => { for (let s = 0; s < 3; s++) setTimeout(() => { if (!b.dead) spiral(b, 16, 0xff3040, '2d6+2', 13); }, s * 900); },
-        () => { for (const h of heroes()) { const from = b.center(); beam(from, h.center(), 0xff3040, 0.08, 1.0); circleAttack(b, h.pos.clone(), 2, 1.0, '4d8+4', 0xff3040); } popText(b.head(), 'TARGET LOCK', 'speech'); },
+        () => { for (const h of heroes()) { const from = b.center(); beam(from, h.center(), 0xff3040, 0.08, 1.0); circleAttack(b, h.pos.clone(), 2, 1.0, '4d8+4', 0xff3040); } popText(b.head(), 'Target locked.', 'speech'); },
       ];
       return P[Math.floor(Math.random() * P.length)];
     },
@@ -103,7 +103,7 @@ export const BOSSES = {
     pattern(b, ph) {
       const all = [BOSSES.hollowking, BOSSES.null, BOSSES.caretaker];
       if (Math.random() < 0.5) return all[Math.floor(Math.random() * 3)].pattern(b, ph);
-      return () => { popText(b.head(), 'UNRAVEL', 'speech'); for (let i = 0; i < 12 + ph * 4; i++) circleAttack(b, b.pos.clone().add(V((Math.random() - .5) * 30, 0, (Math.random() - .5) * 30)), 2.6, 0.8 + Math.random(), '3d8+4', 0xff3a8a); };
+      return () => { popText(b.head(), 'Unravel.', 'speech'); for (let i = 0; i < 12 + ph * 4; i++) circleAttack(b, b.pos.clone().add(V((Math.random() - .5) * 30, 0, (Math.random() - .5) * 30)), 2.6, 0.8 + Math.random(), '3d8+4', 0xff3a8a); };
     },
   },
 };
@@ -146,7 +146,7 @@ export function spawnBoss(key, pos, level) {
     if (B.flying) e.hoverY = t.pos.y + 4;
     if (B.shieldWhileAdds) {
       const adds = G.entities.filter((x) => x.team === 'enemy' && !x.dead && !x.isBoss && x.pos.distanceTo(e.pos) < 30).length;
-      if (adds > 0 && !e.has('shielded')) popText(e.head(), 'SHIELDED — destroy the adds!', 'info', { color: '#40ffd0' });
+      if (adds > 0 && !e.has('shielded')) popText(e.head(), 'Shielded: destroy its sentries', 'info', { color: '#40ffd0' });
       if (adds > 0) e.addStatus('shielded', 0.5); e.resist = adds > 0 ? { fire: 0.2, lightning: 0.2, pierce: 0.2, slash: 0.2, blunt: 0.2, holy: 0.2, tech: 0.2, shadow: 0.2, blast: 0.2, bite: 0.2 } : {};
     }
     // melee swipe if close

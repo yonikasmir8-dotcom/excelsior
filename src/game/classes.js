@@ -134,6 +134,7 @@ export const CLASSES = {
     mechanic: { name: 'Attunement', key: 'RMB', cd: 1, desc: 'Cycle Fire → Frost → Storm. Your bolt, Evocation, Conjuration and Cataclysm all change with it.', press(c) {
       const order = ['fire', 'frost', 'storm']; c.element = order[(order.indexOf(c.element || 'fire') + 1) % 3];
       Audio.play('zap'); burst(c.center(), ELEM[c.element].color, 16, 3, 0.6, 0.3, 1); popText(c.head(), ELEM[c.element].name, 'fate', { color: ELEM[c.element].css });
+      if (c.gearFlag('chicken_luck') && G.combat.active && !G.combat.prismUsed && G.combat.dice.length < 9) { G.combat.prismUsed = true; G.combat.dice.push(d20()); popText(c.head(), 'Prism Die', 'fate'); }
       if (c.t('triune') && G.time - (c.triuneT || -99) >= 4) { c.triuneT = G.time; for (const k in c.cds) if (k !== 'basic' && k !== 'mech') c.cds[k] = Math.max(0, c.cds[k] - 1.5); }
       if (c.model?.parts.weapon) c.model.parts.weapon.traverse((o) => { if (o.material?.emissive && o.material.emissiveIntensity > 1) o.material.emissive.setHex(ELEM[c.element].color); });
       return true; } },
@@ -264,7 +265,7 @@ export const CLASSES = {
         for (const e of G.entities) if (e.isMinion && e.owner === c) { e.life += 6; if (e.kind === 'turret') e.tesla = true; }
         markTag('overclock', c.pos, c); return true; } },
     ],
-    onKill(c) { c.scrap = (c.scrap || 0) + 1; if (c.scrap >= 3) { c.scrap = 0; c.cds.turret = 0; popText(c.head(), 'SCRAP! Turret ready', 'info', { color: '#ffd060' }); } },
+    onKill(c) { c.scrap = (c.scrap || 0) + 1; if (c.scrap >= 3) { c.scrap = 0; c.cds.turret = 0; popText(c.head(), 'Salvage: ballista ready', 'info', { color: '#ffd060' }); } },
     talents: [
       { id: 'sturdy_build', spec: 'core', tier: 0, max: 3, name: 'Sturdy Build', desc: 'Ballista Wards last 4s longer per rank.' },
       { id: 'bigger_boom', spec: 'core', tier: 0, max: 3, name: 'Wider Glyphs', desc: 'Blast Rune radius increased.' },
@@ -307,7 +308,7 @@ export const CLASSES = {
         heal(c, t, (18 + c.level * 3) * c.pow * (1 + c.t('lifegiver') * 0.15)); beam(c.center(), t.center(), 0xfff080, 0.12, 0.3);
         if (c.t('beacon')) for (const a of alliesNear(t.pos, 6, c.team)) if (a !== t) heal(c, a, 8 * c.pow);
         if (t.downed) revive(t, 0.3);
-        if ((c.faith || 0) >= 100) { c.faith = 0; ring(t.pos, 6, 0xfff080, 0.5); for (const e of enemiesNear(t.pos, 6, c.team)) strike(c, e, '2d8+4', { forced: true }, { type: 'holy', knock: 8 }); popText(c.head(), 'FAITH!', 'fate'); }
+        if ((c.faith || 0) >= 100) { c.faith = 0; ring(t.pos, 6, 0xfff080, 0.5); for (const e of enemiesNear(t.pos, 6, c.team)) strike(c, e, '2d8+4', { forced: true }, { type: 'holy', knock: 8 }); popText(c.head(), 'Faith', 'fate'); }
         markTag('heal', t.pos, c); return true; } },
       { id: 'sanctuary', key: 'E', lvl: 2, name: 'Sanctuary', cd: 14, tags: ['sanctuary'], desc: 'Hallowed ground: allies take 40% less damage and regenerate.', cast(c, T) {
         Audio.play('holy'); const p = c.pos.clone();
@@ -403,7 +404,7 @@ export const CLASSES = {
         return true; } },
       { id: 'deathmark', key: 'R', lvl: 6, name: 'Death Mark', cd: 30, tags: ['shadow'], desc: 'Mark a target. After 4s it takes all the damage it took again, plus 50%.', cast(c, T) {
         const t = T.target && !T.target.dead ? T.target : nearestEnemy(c, c.team, 20); if (!t) return false;
-        Audio.play('shadow'); popText(t.head(), 'MARKED', 'fumble');
+        Audio.play('shadow'); popText(t.head(), 'Marked for death', 'fumble');
         t.addStatus('deathmark', 4, { stored: 0, onEnd: (x, s) => { if (x.dead) return; burst(x.center(), 0x40ff90, 30, 6); dealDamage(c, x, s.stored * 1.5 + 20 * c.pow, { type: 'shadow', roll: { hit: true, crit: true, roll: 20 }, heavy: true }); } });
         markTag('shadow', t.pos, c); return true; } },
     ],
@@ -552,7 +553,7 @@ export function setTether(c, t) {
   G.scene.add(line); fx.line = line; const od = fx.dispose.bind(fx); fx.dispose = () => { G.scene.remove(line); line.geometry.dispose(); od(); };
   c._tetherFx = fx;
 }
-function gritMult(c) { if ((c.grit || 0) >= 100) { c.grit = 0; popText(c.head(), 'GRIT!', 'fate'); return 1.5; } return 1; }
+function gritMult(c) { if ((c.grit || 0) >= 100) { c.grit = 0; popText(c.head(), 'Resolve', 'fate'); return 1.5; } return 1; }
 function lowestAlly(c, range) {
   let best = null, bv = 1;
   for (const a of G.entities) { if (a.team !== c.team || a.isMinion || a.dead) continue; if (a.pos.distanceTo(c.pos) > range) continue; const v = a.downed ? -1 : a.hp / a.maxHp; if (v < bv) { bv = v; best = a; } }

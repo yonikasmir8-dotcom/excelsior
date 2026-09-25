@@ -61,9 +61,9 @@ const BASES = {
     pre: ['Hollow', 'Emberforged', 'Ley-touched', 'Old', 'Royal', 'Moss-grown', 'Crowned', 'Wyrmbone'],
   },
   hero: {
-    weapon: { fighter: ['Power Gauntlet', 'Vibranium-ish Shield', 'Kinetic Knuckles'], sorcerer: ['Cosmic Focus', 'Mystic Ring', 'Plasma Glove'], artificer: ['Gadget Belt', 'Repulsor Wrench', 'Grapple Launcher'], cleric: ['Justice Baton', 'Beacon Staff', 'Halo Mace'], rogue: ['Shuriken Set', 'Batarang-ish Blades', 'Retractable Claws'], ranger: ['Trick Bow', 'Compound Bow', 'Holo-Bow'] },
-    armor: ['Kevlar Suit', 'Spandex of Destiny', 'Armored Trenchcoat', 'Nano-Weave', 'Cape & Cowl', 'Hero Suit Mk II'],
-    trinket: ['Secret ID Card', 'Signal Watch', 'Lucky Comic #1', 'Utility Pouch', 'Mask Fragment', 'Radioactive Die'],
+    weapon: { fighter: ['Power Gauntlet', 'Starmetal Shield', 'Kinetic Knuckles'], sorcerer: ['Cosmic Focus', 'Mystic Ring', 'Plasma Glove'], artificer: ['Gadget Belt', 'Kinetic Wrench', 'Grapple Launcher'], cleric: ['Justice Baton', 'Beacon Staff', 'Halo Mace'], rogue: ['Shuriken Set', 'Crescent Throwing Blades', 'Retractable Claws'], ranger: ['Trick Bow', 'Compound Bow', 'Holo-Bow'] },
+    armor: ['Ballistic Weave', 'Suit of Destiny', 'Armored Trenchcoat', 'Nano-Weave', 'Cape & Cowl', 'Hero Suit Mk II'],
+    trinket: ['Secret ID Card', 'Signal Charm', 'Lucky Comic #1', 'Utility Pouch', 'Mask Fragment', 'Radioactive Die'],
     pre: ['Neon', 'Heroic', 'Vigilante', 'Rooftop', 'Gamma', 'Midnight', 'Headline', 'Legendary Team-Up'],
   },
   scifi: {
@@ -102,7 +102,7 @@ export const LEGENDARIES = [
   { id: 'l_fighter_2', cls: 'fighter', slot: 'armor', name: 'The Unyielding Plate', flag: 'grit_armor', desc: 'At full Grit you take 30% less damage.', stats: { hp: 120, ac: 3 } },
   { id: 'l_fighter_3', cls: 'fighter', slot: 'trinket', name: 'Tavern Brawler\'s Tankard', flag: 'charge_reset', desc: 'Shield Charge kills refund its cooldown.', stats: { power: 15, meter: 20 } },
   { id: 'l_sorcerer_1', cls: 'sorcerer', slot: 'weapon', name: 'Staff of Three Suns', flag: 'triple_firebolt', desc: 'Firebolt splits into three bolts.', stats: { power: 30, cdr: 8 } },
-  { id: 'l_sorcerer_2', cls: 'sorcerer', slot: 'trinket', name: 'The Chicken Die', flag: 'chicken_luck', desc: 'Wild Surge backfires are replaced by Echo Casts.', stats: { dice: 1, crit: 1 } },
+  { id: 'l_sorcerer_2', cls: 'sorcerer', slot: 'trinket', name: 'The Prism Die', flag: 'chicken_luck', desc: 'Your first Attunement change in each fight adds a Fate Die to your hand.', stats: { dice: 1, crit: 1 } },
   { id: 'l_sorcerer_3', cls: 'sorcerer', slot: 'armor', name: 'Robes of Infinite Pockets', flag: 'blink_twice', desc: 'Blink has two charges.', stats: { hp: 80, cdr: 10 } },
   { id: 'l_artificer_1', cls: 'artificer', slot: 'weapon', name: 'The Brassika Special', flag: 'turret_tesla', desc: 'Turrets are always Tesla Towers.', stats: { power: 25, cdr: 8 } },
   { id: 'l_artificer_2', cls: 'artificer', slot: 'trinket', name: 'Pocket Reactor', flag: 'grenade_cluster', desc: 'Arc Grenades split into 3 cluster bombs.', stats: { power: 15, meter: 25 } },

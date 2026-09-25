@@ -79,8 +79,8 @@ export class Enemy extends Actor {
     if (this.captain) {
       this.lastDmgType = this._lastType;
       const f = this.hp / this.maxHp;
-      if (this.trait('vengeful') && f < 0.5 && !this.enraged) { this.enraged = true; this.pow *= 1.35; this.speed *= 1.3; this.reveal('vengeful'); Audio.play('roar'); popText(this.head(), 'ENRAGED!', 'crit-banner', { color: '#ff3a3a' }); }
-      if (this.trait('summoner') && f < 0.6 && !this.summoned) { this.summoned = true; this.reveal('summoner'); for (let i = 0; i < 3; i++) new Enemy(G.realm.pool.common[i % G.realm.pool.common.length], this.pos.clone().add(V((Math.random() - .5) * 6, 0.5, (Math.random() - .5) * 6)), this.level).aggro = true; popText(this.head(), 'TO ME, WARBAND!', 'sfx'); }
+      if (this.trait('vengeful') && f < 0.5 && !this.enraged) { this.enraged = true; this.pow *= 1.35; this.speed *= 1.3; this.reveal('vengeful'); Audio.play('roar'); popText(this.head(), 'Enraged', 'hurt'); }
+      if (this.trait('summoner') && f < 0.6 && !this.summoned) { this.summoned = true; this.reveal('summoner'); for (let i = 0; i < 3; i++) new Enemy(G.realm.pool.common[i % G.realm.pool.common.length], this.pos.clone().add(V((Math.random() - .5) * 6, 0.5, (Math.random() - .5) * 6)), this.level).aggro = true; popText(this.head(), 'To me, warband!', 'speech'); }
       if (f < 0.25 && !this.fleeing && (this.trait('coward') || (Math.random() < 0.02 && this.captain.rank < 2))) { this.fleeing = true; this.fleeT = 4; this.reveal('coward'); popText(this.head(), fleeLine(this.captain), 'speech'); }
     }
   }
@@ -225,7 +225,7 @@ export class Enemy extends Actor {
 Enemy.prototype.frontalCheck = function (src) {
   if (!this.trait('shield_bearer')) return 1;
   const to = src.pos.clone().sub(this.pos); to.y = 0; to.normalize();
-  if (to.dot(this.forward()) > 0.3) { this.reveal('shield_bearer'); popText(this.head(), 'BLOCKED', 'miss'); return 0.25; }
+  if (to.dot(this.forward()) > 0.3) { this.reveal('shield_bearer'); popText(this.head(), 'Blocked', 'miss'); return 0.25; }
   return 1;
 };
 Enemy.prototype.onResist = function (type) {

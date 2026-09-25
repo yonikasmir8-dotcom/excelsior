@@ -80,7 +80,7 @@ export function genTavern() {
   under.rotation.x = Math.PI; under.position.set(cx, fy - 13.5, cz);
   W.extras = [W.roof, under];
   const lights = [{ pos: V(x0 + 3, fy + 1.5, cz + 0.5), color: 0xff9a4a, intensity: 30, dist: 18 }, { pos: V(cx, fy + 6, cz), color: 0xffc080, intensity: 26, dist: 26 }, { pos: V(x1 - 4, fy + 5, z0 + 9), color: 0xffb070, intensity: 18, dist: 16 }];
-  return { W, layout: { spawn: V(cx + 0.5, fy, z0 + 5), doors, bar: V(x1 - 4, fy, z0 + 9), fire: V(x0 + 5, fy, cz), stage: V(x0 + 6, fy + 1, z1 - 4), board: V(cx + 7.5, fy, z0 + 2.5), shelves: V(x0 + 4.5, fy, z0 + 3), tables: tables.map((t) => t.clone()), cellar: V(x0 + 6, fy, z1 - 10), center: V(cx, fy, cz), lights, inside: { x0, z0, x1, z1 } } };
+  return { W, layout: { spawn: V(cx + 0.5, fy, z0 + 10), doors, bar: V(x1 - 4, fy, z0 + 9), fire: V(x0 + 5, fy, cz), stage: V(x0 + 6, fy + 1, z1 - 4), board: V(cx + 7.5, fy, z0 + 2.5), shelves: V(x0 + 4.5, fy, z0 + 3), tables: tables.map((t) => t.clone()), cellar: V(x0 + 6, fy, z1 - 10), center: V(cx, fy, cz), lights, inside: { x0, z0, x1, z1 } } };
 }
 
 // ── EMBERWOOD REACH: endless autumn, ley-stones and the Hollow Keep ──

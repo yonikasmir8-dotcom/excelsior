@@ -97,7 +97,7 @@ export class Minion extends Actor {
       if (this.dead || t.dead) return;
       strike(this, t, (this.opts.dmg || 6) * 2.2, { useFate: false }, { type: 'bite', heavy: true });
       t.addStatus('stun', 1.2 + (this.owner.t?.('alpha') ? 1 : 0)); markTag('beast', t.pos, this.owner);
-      popText(t.head(), 'POUNCE!', 'sfx');
+      
     }, 350);
   }
 }

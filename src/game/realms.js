@@ -52,19 +52,21 @@ export function makeSky(def) {
   const grd = g.createLinearGradient(0, 0, 0, H);
   grd.addColorStop(0, hex(def.sky[0])); grd.addColorStop(0.42, hex(def.sky[0])); grd.addColorStop(0.5, hex(def.sky[1])); grd.addColorStop(0.56, hex(def.horizon ?? def.sky[1])); grd.addColorStop(1, hex(def.sky[1]));
   g.fillStyle = grd; g.fillRect(0, 0, W, H);
-  if (def.stars) for (let i = 0; i < 900; i++) { const y = Math.random() * H * 0.48; g.fillStyle = `rgba(255,255,255,${0.2 + Math.random() * 0.8 * (1 - y / (H * 0.5))})`; const r = Math.random() < 0.05 ? 1.6 : 0.8; g.beginPath(); g.arc(Math.random() * W, y, r, 0, 7); g.fill(); }
-  if (def.nebula) for (let i = 0; i < 40; i++) { const x = Math.random() * W, y = H * (0.1 + Math.random() * 0.3), r = 40 + Math.random() * 120; const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, def.nebula[i % 2] + '30'); gr.addColorStop(1, def.nebula[i % 2] + '00'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); }
+  // everything below is drawn three times (x-W, x, x+W) so the texture tiles with no seam
+  const wrap = (fn) => { for (const o of [-W, 0, W]) { g.save(); g.translate(o, 0); fn(); g.restore(); } };
+  if (def.stars) { const st = []; for (let i = 0; i < 900; i++) st.push([Math.random() * W, Math.random() * H * 0.48, Math.random() < 0.05 ? 1.6 : 0.8]); wrap(() => { for (const [x, y, r] of st) { g.fillStyle = `rgba(255,255,255,${0.25 + 0.75 * (1 - y / (H * 0.5))})`; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill(); } }); }
+  if (def.nebula) { const nb = []; for (let i = 0; i < 40; i++) nb.push([Math.random() * W, H * (0.1 + Math.random() * 0.3), 40 + Math.random() * 120, def.nebula[i % 2]]); wrap(() => { for (const [x, y, r, c] of nb) { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, c + '30'); gr.addColorStop(1, c + '00'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); } }); }
   // sun / moon glow
   const sx = W * 0.62, sy = H * (def.sunHeight ?? 0.34);
   const sg = g.createRadialGradient(sx, sy, 0, sx, sy, 180); sg.addColorStop(0, hex(def.sun) + 'ff'); sg.addColorStop(0.08, hex(def.sun) + 'cc'); sg.addColorStop(0.3, hex(def.sun) + '33'); sg.addColorStop(1, hex(def.sun) + '00');
   g.fillStyle = sg; g.fillRect(0, 0, W, H);
   // cloud banks
   const cloud = hex(def.cloud ?? def.sky[1]);
-  for (let i = 0; i < 70; i++) {
-    const x = Math.random() * W, y = H * (0.3 + Math.random() * 0.2), rx = 40 + Math.random() * 140, ry = 8 + Math.random() * 18;
+  const cl = []; for (let i = 0; i < 70; i++) cl.push([Math.random() * W, H * (0.3 + Math.random() * 0.2), 40 + Math.random() * 140, 8 + Math.random() * 18]);
+  wrap(() => { for (const [x, y, rx, ry] of cl) {
     const cg = g.createRadialGradient(x, y, 0, x, y, rx); cg.addColorStop(0, cloud + '55'); cg.addColorStop(1, cloud + '00');
     g.save(); g.translate(x, y); g.scale(1, ry / rx); g.translate(-x, -y); g.fillStyle = cg; g.fillRect(x - rx, y - rx, rx * 2, rx * 2); g.restore();
-  }
+  } });
   const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
   return new THREE.Mesh(new THREE.SphereGeometry(380, 32, 20), new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, fog: false, depthWrite: false }));
 }
@@ -386,7 +388,7 @@ function setupNeon(L) {
         const tgt = pad.target; const d = tgt.clone().sub(h.pos); const hgt = tgt.y - h.pos.y + 4;
         const vy = Math.sqrt(2 * 30 * (h.gravScale || 1) * hgt); const t = vy / (30 * (h.gravScale || 1)) * 1.7;
         h.vel.y = vy; h.knock.set(d.x / t, 0, d.z / t); h.grounded = false; Audio.play('jump'); burst(h.pos.clone(), 0x3affff, 16, 5, 0.5);
-        popText(h.head(), 'BOING!', 'sfx', { color: '#3affff' });
+        0;
       }
     }
   };
@@ -408,7 +410,7 @@ function setupNeon(L) {
     spawnGroup(e.pos.clone().add(V(2, 0, 2)), 2, R.level, R.pool, 0.3);
     G.interactables.push({ pos: e.pos, radius: 3, label: () => 'Smash the Memory Eraser', cond: () => stage(id) >= 2 && !N.er[i], use: () => {
       N.er[i] = true; G.world.fill(e.pos.x - 1, e.pos.y, e.pos.z - 1, e.pos.x, e.pos.y + 2, e.pos.z, 0); Audio.play('explode'); burst(e.pos.clone().add(V(0, 1, 0)), [0xffffff, 0x3affff], 40, 8);
-      popText(e.pos.clone().add(V(0, 2, 0)), 'KRRSSH!', 'sfx'); UI.grantXp(80 + R.level * 10);
+      popText(e.pos.clone().add(V(0, 2, 0)), 'Eraser destroyed', 'info'); UI.grantXp(80 + R.level * 10);
       if (er() >= 3) { setStage(id, 3); spawnNull(); } else refreshObjective(id);
     } });
   });

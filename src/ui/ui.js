@@ -63,14 +63,17 @@ export const UI = {
   title() {
     G.mode = 'title';
     const el = h('div', { id: 'title' },
-      h('div', { class: 'logo' }, 'THE FORGOTTEN', h('br'), 'TAVERN', h('small', {}, 'A MULTIVERSE RPG')),
-      h('div', { class: 'tag' }, 'Every realm is fraying. One tavern remembers them all. Gather your party, roll your fate, and make enemies who never forget you.'),
+      h('div', { class: 'logo' }, 'The Forgotten Tavern', h('small', {}, 'A TALE OF THE REALMS BETWEEN')),
+      h('div', { class: 'tag' }, 'Every realm is fraying. One tavern remembers them all. Gather your party, weigh your fate, and face enemies who never forget you.'),
       h('div', { class: 'menu' },
-        h('button', { class: 'btn', onclick: () => { Audio.unlock(); UI.slotPicker(); } }, 'Play'),
+        UI.api.latestSlot() ? h('button', { class: 'btn', onclick: () => { Audio.unlock(); UI.api.continueGame(UI.api.latestSlot()); } }, 'Continue') : null,
+        h('button', { class: UI.api.latestSlot() ? 'btn alt' : 'btn', onclick: () => { Audio.unlock(); UI.slotPicker(); } }, UI.api.latestSlot() ? 'Load / New Game' : 'New Game'),
         h('button', { class: 'btn alt', onclick: () => { Audio.unlock(); UI.settings(); } }, 'Settings'),
         h('button', { class: 'btn alt', onclick: () => { Audio.unlock(); UI.controls(); } }, 'How to Play'),
+        h('button', { class: 'btn alt', onclick: () => UI.credits() }, 'Credits'),
+        UI.api.canQuit() ? h('button', { class: 'btn alt', onclick: () => UI.api.quit() }, 'Quit') : null,
       ),
-      h('div', { style: 'color:#fff;opacity:.6;font-size:15px;text-shadow:1px 1px 0 #000' }, 'Keyboard + mouse. Best in fullscreen (F11).'),
+      h('div', { style: 'position:fixed;right:14px;bottom:10px;font-size:13px;color:var(--muted)' }, `v${UI.api.version}`),
     );
     root.append(el);
   },
@@ -80,7 +83,7 @@ export const UI = {
       return h('div', { class: 'slot panel', onclick: () => { UI.closeModal(true); if (info) UI.api.continueGame(i); else UI.creation(i); } },
         h('div', { class: 'nm' }, info ? info.name : `Empty Slot ${i}`),
         info ? h('div', {}, `${CLASSES[info.classId].name} · Level ${info.level}`, h('br'), `Loom-Shards: ${info.shards}/3 · ${Math.floor(info.time / 60)} min`, info.ending ? h('div', { style: 'color:#c03a6a' }, '★ Story complete') : null) : h('div', { class: 'muted' }, 'Start a new adventure'),
-        info ? h('button', { class: 'btn red', style: 'font-size:13px;padding:2px 8px;margin-top:8px', onclick: (e) => { e.stopPropagation(); if (e.shiftKey || this?.confirming === i) { UI.api.deleteSave(i); UI.slotPicker(); } else { UI.toast('Shift-click Delete to erase this save for good.'); } } }, 'Delete') : null);
+        info ? h('button', { class: 'btn red', style: 'font-size:12px;padding:3px 10px;margin-top:10px', onclick: (e) => { e.stopPropagation(); const b = e.currentTarget; if (b.dataset.armed) { UI.api.deleteSave(i); UI.slotPicker(); } else { b.dataset.armed = '1'; b.textContent = 'Confirm: delete forever'; setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = 'Delete'; } }, 3500); } } }, 'Delete') : null);
     });
     UI.openModal(h('div', {}, h('h2', {}, 'Choose a Save Slot'), h('div', { class: 'slots' }, slots)));
   },
@@ -129,6 +132,15 @@ export const UI = {
       row('Difficulty', h('select', { id: 'diffSel', style: 'font-family:var(--display);font-size:18px;padding:4px', onchange: (e) => { S.difficulty = e.target.value; UI.api.saveSettings(); } }, ['story', 'normal', 'hard'].map((d) => h('option', { value: d, selected: S.difficulty === d ? '' : null }, { story: 'Story (relaxed)', normal: 'Normal', hard: 'Hard (brutal)' }[d])))),
       row('Comic ink shader', h('input', { type: 'checkbox', checked: S.postfx ? '' : null, onchange: (e) => { S.postfx = e.target.checked; UI.api.saveSettings(); } })),
       h('p', { class: 'muted' }, 'Turn off the comic shader if the game runs slowly.')));
+  },
+  credits() {
+    UI.openModal(h('div', { style: 'text-align:center' }, h('h2', {}, 'Credits'),
+      h('p', {}, h('b', {}, 'The Forgotten Tavern'), ` · version ${UI.api.version}`),
+      h('p', {}, 'Design, code, art and audio: generated procedurally in-engine. No external art or audio assets are used.'),
+      h('h3', {}, 'Open-source software'),
+      h('p', { style: 'font-size:16px' }, 'three.js — MIT License · Electron — MIT License · Vite — MIT License', h('br'), 'Cinzel (Natanael Gama) and Cormorant Garamond (Christian Thalmann) — SIL Open Font License 1.1, via Fontsource'),
+      h('p', { class: 'muted', style: 'font-size:15px' }, 'Full licence texts ship with the game in the licenses folder.'),
+      h('h3', {}, 'Thank you for playing')));
   },
   controls() {
     const k = (x) => h('span', { class: 'kbd' }, x);
