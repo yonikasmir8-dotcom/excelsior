@@ -7,7 +7,7 @@ walk('dist'); walk('electron');
 const text = files.filter((f) => ['.js', '.cjs', '.html', '.css', '.json'].includes(extname(f)));
 const rules = [
   ['debug handles', /window\.__(G|API|UI|M|crashLog)\b/],
-  ['dev server address', /localhost:\d+|127\.0\.0\.1:\d+/],
+  ['dev server address', /localhost|127\.0\.0\.1/],
   ['remote fonts/CDNs', /fonts\.googleapis|fonts\.gstatic|cdn\.jsdelivr|unpkg\.com|cdnjs/],
   ['secrets', /(api[_-]?key|secret|password|token)\s*[:=]\s*['"][A-Za-z0-9_\-]{12,}/i],
   ['private keys', /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
