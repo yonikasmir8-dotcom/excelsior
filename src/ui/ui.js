@@ -275,7 +275,7 @@ export const UI = {
     dlg?.remove();
     dlg = h('div', { id: 'dialogue' }, h('div', { class: 'who' }), h('div', { class: 'box panel' }, h('div', { class: 'spk' }), h('div', { class: 'txt' }), h('div', { class: 'ch' })));
     document.body.append(dlg);
-    const end = () => { dlg?.remove(); dlg = null; G.paused = !!modal; onEnd && onEnd(); };
+    const end = () => { dlg?.remove(); dlg = null; G.paused = !!modal; onEnd && onEnd(); if (G.pendingEnding) { const k = G.pendingEnding; G.pendingEnding = null; setTimeout(() => UI.ending(k), 300); } };
     const show = (key) => {
       const n = tree[key]; if (!n) { end(); return; }
       const who = n.who === 'narrator' ? { name: 'Narrator', title: '', color: '#222' } : NPCS[n.who] || COMPANIONS[n.who] || { name: n.who, color: '#888' };

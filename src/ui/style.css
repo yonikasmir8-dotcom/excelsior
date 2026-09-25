@@ -10,9 +10,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #120d16; fon
 #game { position: fixed; inset: 0; }
 #game canvas { display: block; }
 #ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
-#ui > * { pointer-events: auto; }
+#ui > #title { pointer-events: auto; }
 .hidden { display: none !important; }
-button { font-family: var(--display); letter-spacing: 1px; cursor: pointer; }
+button { font-family: var(--display); letter-spacing: 1px; cursor: pointer; color: var(--ink); }
 button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
 
 /* panels */

@@ -18,7 +18,7 @@ import { initPlayer, updatePlayer, updateCamera, resetCamera, Cam } from './game
 import { initProgress, grantXp, updatePickups } from './game/progress.js';
 import { rollItem, randomLegendary } from './game/loot.js';
 import { newSave, saveGame, loadGame, slotInfo, deleteSave, loadSettings, saveSettings } from './game/save.js';
-import { revealTrait, fullName, TRAITS, RANKS } from './game/nemesis.js';
+import { revealTrait, fullName, TRAITS, RANKS, ensureWarband } from './game/nemesis.js';
 import { genTavern } from './world/gen.js';
 import { VoxelModel } from './entities/model.js';
 
@@ -102,7 +102,7 @@ const API = {
   },
   dismiss: (cid) => { const S = G.save; const m = S.members.find((x) => x.companionId === cid); if (!m) return; S.active = S.active.filter((x) => x !== m.id); setTimeout(() => API.reloadTavern(), 50); },
   advance: (realm, fromStage) => { const r = G.save.realms[realm]; if (r && r.stage === fromStage) { r.stage = fromStage + 1; Audio.play('quest'); refreshObjective(realm); } },
-  ending: (kind) => { G.save.ending = kind; G.save.flags.ending = 1; setTimeout(() => UI.ending(kind), 400); API.saveNow(); },
+  ending: (kind) => { G.save.ending = kind; G.save.flags.ending = 1; G.pendingEnding = kind; API.saveNow(); },
   // UI-facing
   grantXp: (n) => grantXp(n),
   slotInfo, deleteSave, saveSettings,
@@ -115,6 +115,7 @@ const API = {
   newGame: (slot, hero) => {
     G.slot = slot; G.save = newSave(null);
     const m = newMember({ ...hero, isPlayer: true }); G.save.members = [m]; G.save.active = [m.id];
+    ensureWarband('emberwood', 2); ensureWarband('neon', 4); ensureWarband('asterion', 6);
     startPlaying('tavern');
   },
   continueGame: (slot) => { const s = loadGame(slot); if (!s) return; G.slot = slot; G.save = s; startPlaying('tavern'); },

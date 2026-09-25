@@ -21,7 +21,7 @@ import { UI } from '../ui/ui.js';
 const V = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 
 export const REALMS = {
-  tavern: { name: 'The Hearth Between', kind: 'tavern', style: 'tavern', music: 'tavern', sky: [0x1a0a3a, 0x6a2a6a], fog: [0x2a1a3a, 40, 140], sun: 0xffc080, amb: 0x8a6aa0, stars: true },
+  tavern: { name: 'The Hearth Between', kind: 'tavern', style: 'tavern', music: 'tavern', sky: [0x1a0a3a, 0x6a2a6a], fog: [0x2a1a3a, 40, 140], sun: 0xffd0a0, amb: 0xd0b0c0, stars: true, bright: 1.5 },
   emberwood: { name: 'Emberwood Reach', kind: 'emberwood', style: 'emberwood', music: 'emberwood', sky: [0x5a8ad0, 0xffc890], fog: [0xe8c090, 40, 150], sun: 0xfff0d0, amb: 0x9a8aa0, base: 1, genre: 'Fantasy', blurb: 'An endless autumn forest. A dead king. Three corrupted ley-stones.' },
   neon: { name: 'Neon Meridian', kind: 'neon', style: 'neon', music: 'neon', sky: [0x0a0420, 0x6a1a6a], fog: [0x2a0a3a, 40, 170], sun: 0xa0a0ff, amb: 0x8a70c0, stars: true, base: 3, genre: 'Superhero', blurb: 'A city where the heroes are being erased from memory.' },
   asterion: { name: 'The Asterion', kind: 'asterion', style: 'asterion', music: 'asterion', sky: [0x02040a, 0x0a1a2a], fog: [0x05101a, 50, 170], sun: 0xc0e0ff, amb: 0x5a7080, stars: true, base: 5, genre: 'Sci-Fi', blurb: 'A derelict ship whose AI is rewriting its sleeping crew.' },
@@ -104,7 +104,7 @@ export function loadLocation(id, opts = {}) {
   G.scene.background = new THREE.Color(def.sky[1]);
   G.scene.fog = new THREE.Fog(def.fog[0], def.fog[1], def.fog[2]);
   if (id === 'rift' && layout.theme) { G.realm.name = 'Rift: ' + layout.theme.name; G.scene.fog.color.setHex(layout.theme.ground).lerp(new THREE.Color(0xffffff), 0.4); }
-  const hemi = new THREE.HemisphereLight(def.amb, 0x3a2a30, 1.6);
+  const hemi = new THREE.HemisphereLight(def.amb, 0x3a2a30, 1.6 * (def.bright || 1));
   const sun = new THREE.DirectionalLight(def.sun, 1.9); sun.position.set(0.6, 1, 0.35);
   lights = [hemi, sun]; lights.forEach((l) => G.scene.add(l));
   G.post.setStyle(def.style);
