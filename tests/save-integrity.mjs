@@ -50,7 +50,7 @@ r = await ev(async () => { const text = localStorage.getItem('forgotten-tavern-s
 check('valid import into another slot', r === true);
 // 10. crash boundary: a repeatedly failing entity is contained, the player is told, and the game keeps running
 await ev(() => { window.__M.realms.loadLocation('emberwood'); }); await page.waitForTimeout(1500);
-await ev(() => { const e = window.__G.entities.find((x) => x.team === 'enemy'); for (let i = 0; i < 3; i++) { const bad = window.__G.entities.find((x) => x.team === 'enemy' && !x.dead && !x._bad); if (bad) { bad._bad = true; bad.update = () => { throw new Error('test fault'); }; } } });
+await ev(() => { const h = window.__G.party[0]; const near = window.__G.entities.filter((x) => x.team === 'enemy' && !x.dead).sort((a, b) => a.pos.distanceTo(h.pos) - b.pos.distanceTo(h.pos)).slice(0, 3); for (const bad of near) { bad.aggro = true; bad.update = () => { throw new Error('test fault'); }; } }); // nearest enemies update every frame
 await page.waitForTimeout(1500);
 r = await ev(() => ({ box: !!document.getElementById('crashbox'), running: window.__G.mode === 'play', t: window.__G.realTime }));
 await page.waitForTimeout(500);
