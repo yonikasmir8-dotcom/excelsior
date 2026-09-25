@@ -219,7 +219,7 @@ function reportError(err, where = 'unknown') {
 function guard(where, fn) { try { fn(); } catch (err) { reportError(err, where); } }
 addEventListener('error', (e) => reportError(e.error || e.message, 'window'));
 addEventListener('unhandledrejection', (e) => reportError(e.reason, 'promise'));
-window.__crashLog = errLog;
+if (import.meta.env.DEV) window.__crashLog = errLog;
 
 // ── Unstuck: remember recent safe spots (grounded, out of combat), and return the party to one on request ──
 const safeSpots = []; let safeT = 0;
@@ -341,6 +341,9 @@ async function boot() {
   if (!G.settings.seenNotice) UI.notice(() => { G.settings.seenNotice = true; saveSettings(); UI.title(); });
   else UI.title();
 }
-window.__G = G; window.__API = API; window.__UI = UI; // debug handles
-import * as _ai from './game/ai.js'; import * as _fx from './game/effects.js'; import * as _cb from './game/combat.js'; import * as _rl from './game/realms.js'; import * as _bs from './game/bosses.js';
-window.__M = { ai: _ai, fx: _fx, combat: _cb, realms: _rl, bosses: _bs };
+// debug handles for development and the automated suites only; stripped from release builds
+if (import.meta.env.DEV) {
+  window.__G = G; window.__UI = UI;
+  // __API last, so a harness that waits for it also has __M
+  Promise.all(['ai', 'effects', 'combat', 'realms', 'bosses'].map((m) => import(`./game/${m}.js`))).then(([ai, fx, combat, realms, bosses]) => { window.__M = { ai, fx, combat, realms, bosses }; window.__API = API; });
+}

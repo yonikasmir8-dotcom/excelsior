@@ -2,7 +2,7 @@
   "name": "the-forgotten-tavern",
   "version": "0.1.0",
   "private": true,
-  "description": "The Forgotten Tavern \u2014 a blocky comic-book multiverse RPG",
+  "description": "The Forgotten Tavern — a high-fantasy party action-RPG across broken realms",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -11,7 +11,11 @@
     "preview": "vite preview",
     "desktop": "vite build && electron .",
     "package": "vite build && electron-builder",
-    "test:saves": "node tests/save-integrity.mjs"
+    "test:saves": "node tests/save-integrity.mjs",
+    "test:tutorial": "node tests/tutorial.mjs",
+    "test:golden": "node tests/golden-path.mjs",
+    "test:hygiene": "vite build && node tests/hygiene.mjs",
+    "test": "npm run test:saves && npm run test:tutorial && npm run test:golden && npm run test:hygiene"
   },
   "dependencies": {
     "@fontsource/cinzel": "^5.3.0",
