@@ -99,6 +99,11 @@ const B = {
 };
 
 const matStd = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.02 });
+// Scenery near the camera dissolves (screen-door dither) so foliage never blocks the view of the fight.
+matStd.onBeforeCompile = (sh) => {
+  sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vPropWorld;').replace('#include <project_vertex>', '#include <project_vertex>\n#ifdef USE_INSTANCING\nvPropWorld = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).xyz;\n#else\nvPropWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;\n#endif');
+  sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vPropWorld;').replace('void main() {', 'void main() {\n  float camD = distance(vPropWorld, cameraPosition);\n  if (camD < 4.5) { float th = fract(dot(floor(gl_FragCoord.xy), vec2(0.5, 0.25))) ; if (th + 0.1 > (camD - 1.0) / 3.5) discard; }');
+};
 const glowMats = new Map();
 function glowMat(color, intensity) { const k = color + ':' + intensity; if (!glowMats.has(k)) glowMats.set(k, new THREE.MeshStandardMaterial({ color: 0x222222, emissive: new THREE.Color(color), emissiveIntensity: intensity, roughness: 0.4 })); return glowMats.get(k); }
 const geoCache = new Map();

@@ -131,10 +131,10 @@ export const CLASSES = {
     skill: { arcana: 5, persuasion: 3, insight: 2 },
     model: { weapon: 'staff', hat: 'hood', sleeves: true, extras: ['robe', 'cape'], colors: { body: 0x2a2a5a, legs: 0x1a1a3a, accent: 0xc8a050, hat: 0x2a2a5a, cape: 0x1a1a40, magic: 0xaef4ff } },
     passive: { name: 'Resonance', desc: 'Casting a spell of a different element than your last within 5s grants Resonance (+10% spell damage, stacks 3×).' },
-    mechanic: { name: 'Attunement', key: 'RMB', desc: 'Cycle Fire → Frost → Storm. Your bolt, Evocation, Conjuration and Cataclysm all change with it.', press(c) {
+    mechanic: { name: 'Attunement', key: 'RMB', cd: 1, desc: 'Cycle Fire → Frost → Storm. Your bolt, Evocation, Conjuration and Cataclysm all change with it.', press(c) {
       const order = ['fire', 'frost', 'storm']; c.element = order[(order.indexOf(c.element || 'fire') + 1) % 3];
       Audio.play('zap'); burst(c.center(), ELEM[c.element].color, 16, 3, 0.6, 0.3, 1); popText(c.head(), ELEM[c.element].name, 'fate', { color: ELEM[c.element].css });
-      if (c.t('triune')) for (const k in c.cds) if (k !== 'basic') c.cds[k] = Math.max(0, c.cds[k] - 1.5);
+      if (c.t('triune') && G.time - (c.triuneT || -99) >= 4) { c.triuneT = G.time; for (const k in c.cds) if (k !== 'basic' && k !== 'mech') c.cds[k] = Math.max(0, c.cds[k] - 1.5); }
       if (c.model?.parts.weapon) c.model.parts.weapon.traverse((o) => { if (o.material?.emissive && o.material.emissiveIntensity > 1) o.material.emissive.setHex(ELEM[c.element].color); });
       return true; } },
     basic: { name: 'Arcane Bolt', cd: 0.42, range: 22, cast(c, T) {
@@ -217,7 +217,7 @@ export const CLASSES = {
       { id: 'permafrost', spec: 'b', tier: 2, max: 3, name: 'Permafrost', desc: 'Freezes last longer and Shatter hits harder.' },
       { id: 'lucky_star', spec: 'b', tier: 2, max: 2, name: 'Star-Touched', desc: 'Start fights with 1 extra Fate Die per rank.' },
       { id: 'entropy', spec: 'b', tier: 3, max: 3, name: 'Entropy', desc: 'Glancing blows deal more damage (22% per rank).' },
-      { id: 'triune', spec: 'b', tier: 4, max: 1, name: 'Triune Mastery', keystone: true, desc: 'KEYSTONE — Switching attunement refunds 1.5s of every cooldown.' },
+      { id: 'triune', spec: 'b', tier: 4, max: 1, name: 'Triune Mastery', keystone: true, desc: 'KEYSTONE — Switching attunement refunds 1.5s of every cooldown (at most once every 4 seconds).' },
     ],
     specs: { a: 'Stormcaller', b: 'Elementalist' },
     resonance: { neon: { evocation: 'Hero-Bolt', conjuration: 'Power Surge', blink: 'Speedster Flicker', cataclysm: 'Orbital Drop' }, asterion: { evocation: 'Plasma Lance', conjuration: 'Field Collapse', blink: 'Phase Jump', cataclysm: 'Decaying Orbit' } },

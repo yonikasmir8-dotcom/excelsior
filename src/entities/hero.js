@@ -9,7 +9,7 @@ import { Audio } from '../core/audio.js';
 import { emit } from '../core/events.js';
 
 export function xpForLevel(l) { return Math.round(90 * Math.pow(l, 1.55)); }
-export const MAX_LEVEL = 30;
+export const MAX_LEVEL = 20;
 
 export class Hero extends Actor {
   constructor(data, pos) {

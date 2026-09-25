@@ -93,7 +93,7 @@ export function buildParty(spawn) {
     if (data.classId === 'ranger' && G.location !== 'tavern') summonPet(h);
     if (S.buff && G.location !== 'tavern') { if (S.buff.id === 'hearty') { h.maxHp = Math.round(h.maxHp * 1.2); h.hp = h.maxHp; } if (S.buff.id === 'chili') h.pow *= 1.12; }
   });
-  G.activeIndex = 0;
+  G.activeIndex = Math.max(0, G.party.findIndex((h) => h.data.id === S.leader));
 }
 
 export function loadLocation(id, opts = {}) {

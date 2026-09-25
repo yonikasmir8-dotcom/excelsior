@@ -43,6 +43,7 @@ export function endCombat() {
   C.dice = [];
 }
 export function addStyle(v, why) {
+  return; // Style rank cut (GDD §3)
   const C = G.combat; if (!C.active) return;
   C.style = Math.max(0, Math.min(620, C.style + v)); C.styleDecayWait = v > 0 ? 2.5 : 0;
   C.best = Math.max(C.best, C.style);
@@ -77,7 +78,7 @@ export function sacrificeSelectedDie() {
   const gain = Math.round((21 - v) * 1.6);
   addMeter(gain);
   const h = activeHero(); if (h) popText(h.head(), `+${gain}% BREAK`, 'info', { color: '#ffd23a' });
-  if (G.party.some((p) => p.t?.('probability_engine'))) C.dice[C.sel] = d20(); else C.dice.splice(C.sel, 1);
+  C.dice.splice(C.sel, 1);
   for (const p of G.party) if (p.t && p.t('gambit')) p.addStatus('gambit', 5, { mult: 1 + 0.1 * p.t('gambit') });
   if (C.armed === C.sel) C.armed = null; else if (C.armed !== null && C.armed > C.sel) C.armed--;
   C.sel = Math.min(C.sel, Math.max(0, C.dice.length - 1));

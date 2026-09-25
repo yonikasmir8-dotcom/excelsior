@@ -43,8 +43,9 @@ export function updatePlayer(dt) {
   if (Input.locked) { Cam.yaw -= Input.mouse.dx * sens; Cam.pitch = Math.max(-0.9, Math.min(1.2, Cam.pitch + Input.mouse.dy * sens)); }
   if (Input.hit('KeyV')) { Cam.fp = !Cam.fp; G.settings.camera = Cam.fp ? 'first' : 'third'; }
   // switching heroes
-  for (let i = 0; i < 4; i++) if (Input.hit('Digit' + (i + 1)) && G.party[i] && !G.party[i].downed && i !== G.activeIndex) { activeHero().mechRelease?.({}); G.activeIndex = i; Audio.play('panel'); UI.toast(`Now controlling ${G.party[i].name}`); }
-  if (h.downed) { const alive = G.party.findIndex((p) => !p.downed); if (alive >= 0) G.activeIndex = alive; }
+  // Live hero switching was cut (GDD §3). While your hero is down, companions come to revive you;
+  // after 20s you get back up on your own so the fight can never stall.
+  if (h.downed) { h.moveInput.set(0, 0, 0); if ((h.downT || 0) > 20) { revive(h, 0.3); } return; }
   const H = activeHero();
   // movement
   const f = V(-Math.sin(Cam.yaw), 0, -Math.cos(Cam.yaw)), r = V(-f.z, 0, f.x);

@@ -135,15 +135,14 @@ export const UI = {
     UI.openModal(h('div', {}, h('h2', {}, 'How to Play'),
       h('div', { class: 'help' },
         h('div', {}, k('WASD'), ' move · ', k('Mouse'), ' look · ', k('Space'), ' jump (double jump) · ', k('Shift'), ' dash (dodge through attacks)'),
-        h('div', {}, k('LMB'), ' basic attack · ', k('Q'), k('E'), k('RMB'), k('R'), ' abilities (R is your ultimate)'),
-        h('div', {}, k('1'), '–', k('4'), ' switch hero · companions fight on their own'),
+        h('div', {}, k('LMB'), ' basic attack · ', k('Q'), k('E'), k('C'), ' abilities · ', k('R'), ' ultimate'),
+        h('div', {}, k('RMB'), ' your class signature: Guard (Fighter), Attunement (Sorcerer), Detonate (Runesmith), Tether (Cleric), Tumble (Rogue), Aimed Shot (Ranger)'),
         h('div', {}, k('F'), ' talk / interact / revive (hold) · ', k('H'), ' drink a potion'),
         h('div', {}, k('Tab'), ' INITIATIVE BREAK when the meter is full: freeze time and plan a party combo'),
         h('div', {}, k('Wheel'), ' pick a Fate Die · ', k('X'), ' arm it (your next attack uses that roll) · ', k('Z'), ' sacrifice it for Break charge (low dice give more)'),
         h('div', {}, k('I'), ' inventory · ', k('K'), ' talents · ', k('P'), ' party · ', k('J'), ' journal and Nemeses · ', k('V'), ' first/third person · ', k('Esc'), ' pause'),
         h('p', {}, h('b', {}, 'Fate Dice: '), 'every fight you roll a hand of d20s. Every attack is a d20 roll against armour. A natural 20 is a critical hit. Save your 19s for the moments that matter.'),
         h('p', {}, h('b', {}, 'Team-Ups: '), 'certain abilities combine when used close together by different heroes, such as a turret plus lightning, or smoke plus a volley. Experiment! Initiative Break combos trigger them for free.'),
-        h('p', {}, h('b', {}, 'Style: '), 'mix your abilities, crit and avoid damage to raise your Style rank. High ranks drop bonus loot when the fight ends.'),
         h('p', {}, h('b', {}, 'Nemeses: '), 'named captains remember you. If they down a hero or escape, they get stronger and adapt. Kill them for good loot. Some come back anyway.'),
       )));
   },
@@ -156,7 +155,6 @@ export const UI = {
       h('div', { id: 'party' }), h('div', { id: 'loc' }), h('div', { id: 'objective', class: 'panel' }, h('h4', {}, 'OBJECTIVE'), h('div', { class: 't' }, G.objectiveText || '')),
       h('div', { id: 'markers' }), h('div', { id: 'crosshair' }), h('div', { id: 'abilities' }), h('div', { id: 'dice' }), h('div', { id: 'diceHint' }),
       h('div', { id: 'meter' }, h('div', { class: 'lbl' }, h('span', {}, 'BREAK'), h('span', { class: 'v' }, '0%')), h('div', { class: 'bar' }, h('i'))),
-      h('div', { id: 'style' }, h('div', { class: 'rk' }), h('div', { class: 'lb' }), h('div', { class: 'bar sb' }, h('i'))),
       h('div', { id: 'stats' }), h('div', { id: 'prompt', class: 'panel hidden' }), h('div', { id: 'bossbar', class: 'hidden' }, h('div', { class: 'nm' }), h('div', { class: 'sub' }), h('div', { class: 'bar' }, h('i'))),
     );
     root.append(hud);
@@ -167,7 +165,7 @@ export const UI = {
     G.party.forEach((hr, i) => p.append(h('div', { class: 'pcard', 'data-i': i },
       h('div', { class: 'por', style: `background:${CLASSES[hr.classId].color}` }, hr.name[0]),
       h('div', { class: 'meta' }, h('div', { class: 'nm' }, `${hr.name}`), h('div', { class: 'bar hp' }, h('i')), h('div', { class: 'bar res', style: 'height:6px;margin-top:2px' }, h('i'))),
-      h('div', { class: 'key' }, i + 1))));
+      i === G.activeIndex ? h('div', { class: 'key' }, '★') : null)));
     UI.rebuildAbilities();
   },
   rebuildAbilities() {
@@ -218,10 +216,6 @@ export const UI = {
     }
     // meter & style
     const m = $('#meter'); m.querySelector('.bar > i').style.width = C.meter + '%'; m.querySelector('.v').textContent = C.meter >= 100 ? 'READY [TAB]' : Math.floor(C.meter) + '%'; m.classList.toggle('full', C.meter >= 100);
-    const st = $('#style'); const r = styleRank(C.style);
-    st.style.visibility = C.active ? 'visible' : 'hidden';
-    st.querySelector('.rk').textContent = r.id; st.querySelector('.rk').style.color = r.color; st.querySelector('.lb').textContent = r.label.toUpperCase();
-    const next = STYLE_RANKS[STYLE_RANKS.indexOf(r) + 1]; st.querySelector('.bar > i').style.width = (next ? (C.style - r.min) / (next.min - r.min) * 100 : 100) + '%';
     $('#stats').innerHTML = `LV ${S.party.level} <span style="opacity:.7">(${S.party.xp}/${xpForLevel(S.party.level)} XP)</span><br>🪙 ${S.gold}g &nbsp; ⚗ ${S.potions}`;
     // prompt
     const pr = $('#prompt'); const it = G.promptTarget;
@@ -467,11 +461,12 @@ export const UI = {
     const S = G.save; const body = h('div', {});
     const render = () => {
       body.innerHTML = '';
-      body.append(h('h2', {}, 'Party'), h('p', {}, 'Up to 4 heroes. You are always first. Changes to who is in the party take effect when you next travel (or right away in the Tavern).'));
+      body.append(h('h2', {}, 'Party'), h('p', {}, 'Up to 4 heroes. Choose who you lead; the others fight alongside you with their own tactics. Changes apply right away in the Tavern, or when you next travel.'));
       body.append(h('div', { class: 'grid', style: 'grid-template-columns:repeat(auto-fill,minmax(250px,1fr))' }, S.members.map((m) => {
         const inP = S.active.includes(m.id); const C = CLASSES[m.classId];
         return h('div', { class: 'panel', style: 'padding:10px' + (inP ? ';background:#fff8c0' : '') },
           h('div', { class: 'title-font', style: `font-size:24px;color:${C.color}` }, m.name), h('div', {}, `${C.name}${m.isPlayer ? ' · YOU' : ''}`),
+          inP ? h('button', { class: 'btn ' + ((S.leader || S.members[0].id) === m.id ? 'cyan' : 'alt'), style: 'font-size:13px;padding:2px 8px;margin-top:6px', onclick: () => { S.leader = m.id; Audio.play('click'); render(); if (G.location === 'tavern') UI.api.reloadTavern(); else UI.toast('Your new leader takes over when you next travel.'); } }, (S.leader || S.members[0].id) === m.id ? 'Leading' : 'Lead the party') : null,
           !m.isPlayer ? h('div', { style: 'margin-top:6px;display:flex;gap:6px;flex-wrap:wrap' },
             h('button', { class: 'btn ' + (inP ? 'red' : ''), style: 'font-size:14px;padding:3px 10px', onclick: () => { if (inP) S.active = S.active.filter((x) => x !== m.id); else if (S.active.length < 4) S.active.push(m.id); else { UI.toast('Party full (4).'); return; } Audio.play('click'); render(); if (G.location === 'tavern') UI.api.reloadTavern(); } }, inP ? 'Bench' : 'Add to party'),
             ...['aggressive', 'balanced', 'defensive'].map((t) => h('button', { class: 'btn alt', style: `font-size:13px;padding:2px 8px;${(m.tactic || 'balanced') === t ? 'background:var(--cyan)' : ''}`, onclick: () => { m.tactic = t; render(); } }, t))) : null);

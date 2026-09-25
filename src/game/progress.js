@@ -92,11 +92,6 @@ export function initProgress() {
   });
   on('crit', ({ src, roll }) => { if (src?.team === 'party') { G.save.stats.crits++; if (roll === 20) G.save.stats.nat20++; if (Math.random() < 0.2) banter('crit', src); } });
   on('combatEnd', ({ best, kills }) => {
-    const r = styleRank(best); const idx = STYLE_RANKS.indexOf(r);
-    if (kills > 0 && idx >= 3) {
-      const h = activeHero(); UI.toast(`Style rank ${r.label}! Bonus loot!`);
-      dropItem(h.pos.clone().add(h.forward().multiplyScalar(2)), rollItem(G.realm.level, { boost: idx * 0.6 + lootBoost(), realmKind: G.realm.kind, classId: randCls(), minRarity: idx - 2 }));
-    }
     G.save.flags.inspired = 0;
   });
   on('combatStart', () => {
@@ -134,7 +129,6 @@ export function initProgress() {
   on('teamup', ({ tu, first }) => { UI.speedlines(true); UI.teamupBanner(tu, first); banter('teamup'); });
   on('bossEncounter', () => { banter('boss'); Audio.music('combat'); });
   on('bossDefeated', () => { Audio.music(G.realm.music); });
-  on('styleUp', (r) => UI.styleUp(r));
   on('banter', ({ ev, fallback }) => { if (!banter(ev)) banter(fallback); });
   on('damage', ({ tgt }) => { if (tgt.team === 'party' && !tgt.isMinion && tgt.hp / tgt.maxHp < 0.3 && !tgt._lowT) { tgt._lowT = true; setTimeout(() => (tgt._lowT = false), 12000); banter('low', tgt, true); } });
   on('traitRevealed', ({ c, t }) => UI.toast(`Intel: ${c.name} is ${TRAITS[t].name}. ${TRAITS[t].desc}`));
