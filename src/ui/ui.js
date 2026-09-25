@@ -46,7 +46,7 @@ export const UI = {
   fade(mid) { const f = $('#fade'); f.classList.add('on'); setTimeout(() => { try { mid(); } finally { setTimeout(() => f.classList.remove('on'), 120); } }, 380); },
   speedlines(gold = false) { const s = $('#speedlines'); if (!s) return; s.classList.toggle('gold', gold); s.classList.remove('on'); void s.offsetWidth; s.classList.add('on'); },
   flashCd(id) { const el = document.querySelector(`.ab[data-id="${id}"]`); if (el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); } },
-  objective(text) { G.objectiveText = text; const o = $('#objective .t'); if (o) o.textContent = text; },
+  objective(text) { if (G.objectiveText && text !== G.objectiveText && G.save) setTimeout(() => G.saveNow?.(), 300); G.objectiveText = text; const o = $('#objective .t'); if (o) o.textContent = text; },
   grantXp(n) { UI.api.grantXp(n); },
   openModal(content, { onClose, wide } = {}) {
     UI.closeModal(true);
@@ -78,14 +78,43 @@ export const UI = {
     root.append(el);
   },
   slotPicker() {
+    const small = 'font-size:12px;padding:3px 10px';
+    const importInto = (i) => {
+      const run = async (text) => { const r = await UI.api.importSave(i, text); if (r.ok) { UI.toast('Save imported.'); UI.slotPicker(); } else UI.errorBox('Import failed', `That file is not a valid save for this game (${r.error}). Nothing was changed.`); };
+      if (window.electronAPI) { window.electronAPI.importSave().then((r) => { if (r.ok) run(r.text); else if (!r.canceled) UI.errorBox('Import failed', r.error); }); return; }
+      const inp = h('input', { type: 'file', accept: '.json,application/json', style: 'display:none', onchange: (e) => { const f = e.target.files[0]; if (!f) return; if (f.size > 5e6) { UI.errorBox('Import failed', 'That file is too large to be a save.'); return; } f.text().then(run); } });
+      document.body.append(inp); inp.click(); setTimeout(() => inp.remove(), 60000);
+    };
     const slots = [1, 2, 3].map((i) => {
       const info = UI.api.slotInfo(i);
+      if (info && info.damaged) return h('div', { class: 'slot panel' }, h('div', { class: 'nm', style: 'color:#e08070' }, `Slot ${i}: damaged`), h('div', { class: 'muted' }, 'This save and its backups could not be read. Other slots are safe.'),
+        h('div', { style: 'display:flex;gap:6px;margin-top:10px;flex-wrap:wrap' }, h('button', { class: 'btn alt', style: small, onclick: () => importInto(i) }, 'Import'), delBtn(i)));
       return h('div', { class: 'slot panel', onclick: () => { UI.closeModal(true); if (info) UI.api.continueGame(i); else UI.creation(i); } },
         h('div', { class: 'nm' }, info ? info.name : `Empty Slot ${i}`),
-        info ? h('div', {}, `${CLASSES[info.classId].name} · Level ${info.level}`, h('br'), `Loom-Shards: ${info.shards}/3 · ${Math.floor(info.time / 60)} min`, info.ending ? h('div', { style: 'color:#c03a6a' }, '★ Story complete') : null) : h('div', { class: 'muted' }, 'Start a new adventure'),
-        info ? h('button', { class: 'btn red', style: 'font-size:12px;padding:3px 10px;margin-top:10px', onclick: (e) => { e.stopPropagation(); const b = e.currentTarget; if (b.dataset.armed) { UI.api.deleteSave(i); UI.slotPicker(); } else { b.dataset.armed = '1'; b.textContent = 'Confirm: delete forever'; setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = 'Delete'; } }, 3500); } } }, 'Delete') : null);
+        info ? h('div', {}, `${CLASSES[info.classId].name} · Level ${info.level}`, h('br'), `Loom-Shards ${info.shards}/3 · ${Math.floor(info.time / 60)} min played`, info.savedAt ? h('div', { class: 'muted', style: 'font-size:15px' }, 'Saved ' + new Date(info.savedAt).toLocaleString()) : null, info.ending ? h('div', { style: 'color:var(--gold-hi)' }, '★ Story complete') : null) : h('div', { class: 'muted' }, 'Start a new adventure'),
+        h('div', { style: 'display:flex;gap:6px;margin-top:10px;flex-wrap:wrap' },
+          info ? h('button', { class: 'btn alt', style: small, onclick: (e) => { e.stopPropagation(); UI.api.exportSave(i).then((r) => r.ok && UI.toast('Save exported.')); } }, 'Export') : null,
+          h('button', { class: 'btn alt', style: small, onclick: (e) => { e.stopPropagation(); importInto(i); } }, 'Import'),
+          info ? delBtn(i) : null));
     });
-    UI.openModal(h('div', {}, h('h2', {}, 'Choose a Save Slot'), h('div', { class: 'slots' }, slots)));
+    function delBtn(i) { return h('button', { class: 'btn red', style: small, onclick: (e) => { e.stopPropagation(); const b = e.currentTarget; if (b.dataset.armed) { UI.api.deleteSave(i); UI.slotPicker(); } else { b.dataset.armed = '1'; b.textContent = 'Confirm: delete forever'; setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = 'Delete'; } }, 3500); } } }, 'Delete'); }
+    UI.openModal(h('div', {}, h('h2', {}, 'Save Slots'), h('p', { class: 'muted', style: 'margin-top:0' }, 'The game saves automatically when you travel, finish a quest step, every minute outside combat, and when you quit. Each slot keeps three backups.'), h('div', { class: 'slots' }, slots)));
+  },
+  errorBox(title, text, actions = []) {
+    const el = h('div', { class: 'modal', style: 'z-index:95' }, h('div', { class: 'sheet panel notice', style: 'max-width:620px' }, h('h2', {}, title), h('p', {}, text),
+      h('div', { style: 'display:flex;gap:10px;justify-content:center;flex-wrap:wrap' }, ...actions.map(([label, fn, cls]) => h('button', { class: 'btn ' + (cls || 'alt'), onclick: () => { el.remove(); fn(); } }, label)), h('button', { class: 'btn', onclick: () => el.remove() }, actions.length ? 'Close' : 'OK'))));
+    document.body.append(el); return el;
+  },
+  // Shown when something breaks during play. Says what happened, whether progress is safe, and what to do next.
+  crash(err) {
+    if (document.getElementById('crashbox')) return;
+    const ago = G.lastSaveAt ? Math.max(0, Math.round((Date.now() - G.lastSaveAt) / 60000)) : null;
+    const report = `The Forgotten Tavern v${UI.api.version}\n${new Date().toISOString()}\nLocation: ${G.location}\n${err && err.stack || err}`;
+    const el = UI.errorBox('Something went wrong', `An unexpected error interrupted the game. Your progress is saved${ago != null ? ` (last save ${ago === 0 ? 'less than a minute' : ago + ' minute' + (ago === 1 ? '' : 's')} ago)` : ''}. You can keep playing, or return to the Tavern to reload this area cleanly.`, [
+      ['Return to the Tavern', () => UI.api.travel('tavern'), 'cyan'],
+      ['Copy error report', () => { navigator.clipboard?.writeText(report).then(() => UI.toast('Error report copied.'), () => UI.toast('Could not copy; the report is in the crash log.')); }],
+    ]);
+    el.id = 'crashbox'; el.querySelector('.btn:last-child').textContent = 'Keep playing';
   },
   creation(slot) {
     let cls = 'fighter', name = '', body = null, hair = 0x5a3018, skin = 0xf0c090;
@@ -301,7 +330,9 @@ export const UI = {
   updateMarkers() {
     const box = $('#markers'); const w = innerWidth, hh = innerHeight;
     const want = [];
-    const pts = G.realm?.markers ? G.realm.markers() : [];
+    let pts = G.realm?.markers ? G.realm.markers() : [];
+    const waveFoes = (G.waves || []).flat().filter((e) => !e.dead);
+    if (waveFoes.length) pts = waveFoes.map((e) => e.pos);
     for (const p of pts.slice(0, 6)) want.push({ kind: 'm', pos: p.clone().add(new THREE.Vector3(0, 3, 0)) });
     const me = activeHero();
     if (G.settings.threatCues) for (const e of G.entities) if (e.team === 'enemy' && !e.dead && e.windup > 0 && e.target === me) want.push({ kind: 'threat', pos: e.head() });
@@ -623,7 +654,8 @@ export const UI = {
     UI.openModal(h('div', { style: 'text-align:center' }, h('h2', {}, 'Paused'),
       h('div', { style: 'display:flex;flex-direction:column;gap:10px;align-items:center' },
         h('button', { class: 'btn', onclick: () => UI.closeModal() }, 'Resume'),
-        h('button', { class: 'btn alt', onclick: () => { UI.api.saveNow(); UI.toast('Game saved.'); } }, 'Save Game'),
+        h('button', { class: 'btn alt', onclick: () => { const r = UI.api.saveNow(); UI.toast(r && r.ok ? 'Game saved.' : 'Save failed; your previous save is intact.'); } }, 'Save Game'),
+        G.location !== 'tavern' ? h('button', { class: 'btn alt', title: 'Returns your party to the last safe spot, with no penalty.', onclick: () => { UI.closeModal(); UI.api.unstuck(); } }, 'Unstuck') : null,
         h('button', { class: 'btn alt', onclick: () => UI.controls() }, 'How to Play'),
         h('button', { class: 'btn alt', onclick: () => UI.settings() }, 'Settings'),
         h('button', { class: 'btn red', onclick: () => { UI.api.saveNow(); location.reload(); } }, 'Save & Quit to Title'))));

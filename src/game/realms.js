@@ -80,7 +80,7 @@ export function clearLocation() {
   if (skyMesh) { G.scene.remove(skyMesh); skyMesh.geometry.dispose(); skyMesh.material.map.dispose(); skyMesh = null; }
   G.sun = null; G.roof = null; G.inside = null;
   lights.forEach((l) => G.scene.remove(l)); lights = [];
-  G.interactables = []; G.markers = []; G.pickups = [];
+  G.interactables = []; G.markers = []; G.pickups = []; G.waves = []; G.safeSpotsReset?.();
   G.party = [];
   if (G.scriptOff) { G.scriptOff.forEach((f) => f()); G.scriptOff = null; }
   UI.bossBar(null);
@@ -325,9 +325,11 @@ function wave(center, n, types, onClear, level = G.realm.level) {
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2 + Math.random(); const p = center.clone().add(V(Math.cos(a) * 11, 2, Math.sin(a) * 11));
     p.y = G.world.groundBelow(p.x, p.y + 8, p.z) + 0.05;
-    const e = new Enemy(types[i % types.length], p, level); e.aggro = true; spawned.push(e); burst(e.center(), 0x8040ff, 14, 4);
+    const e = new Enemy(types[i % types.length], p, level); e.aggro = true; e.waveBound = true; e.waveCenter = center.clone(); e.lastHurtT = G.time; spawned.push(e); burst(e.center(), 0x8040ff, 14, 4);
   }
-  timed(600, () => { if (spawned.every((e) => e.dead)) { onClear(); return false; } });
+  G.waves = (G.waves || []).concat([spawned]);
+  // no time limit: the wave only ends when it is defeated, and wave enemies can never wander off or get lost (see Enemy.update)
+  timed(Infinity, () => { if (spawned.every((e) => e.dead)) { G.waves = (G.waves || []).filter((w) => w !== spawned); onClear(); return false; } });
   return spawned;
 }
 function realmComplete(id, memory) {

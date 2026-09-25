@@ -22,7 +22,7 @@ import { updateCompanion } from './game/ai.js';
 import { initPlayer, updatePlayer, updateCamera, resetCamera, Cam } from './game/player.js';
 import { initProgress, grantXp, updatePickups } from './game/progress.js';
 import { rollItem, randomLegendary } from './game/loot.js';
-import { newSave, saveGame, loadGame, slotInfo, deleteSave } from './game/save.js';
+import { newSave, saveGame, loadGame, loadGameDetailed, slotInfo, deleteSave, exportSave, importSaveText } from './game/save.js';
 import { loadSettings, saveSettings, applySettings, detectQuality, ACTION_LABELS, DEFAULT_KEYS, keyName } from './core/settings.js';
 import { revealTrait, fullName, TRAITS, RANKS, ensureWarband } from './game/nemesis.js';
 import { genTavern } from './world/gen.js';
@@ -112,7 +112,9 @@ const API = {
   trialLabel: (c) => { const t = (G.save.trials?.[c] || 0) + 1; return `The ${CLASSES[c].name}'s Trial ${['I', 'II', 'III'][t - 1] || ''} (needs level ${[6, 14, 22][t - 1]})`; },
   trialAvailable: (c) => { const t = (G.save.trials?.[c] || 0); return t < 3 && G.save.party.level >= [6, 14, 22][t] && G.save.active.some((id) => G.save.members.find((m) => m.id === id)?.classId === c); },
   startTrial: (c) => { const tier = (G.save.trials?.[c] || 0) + 1; setTimeout(() => UI.realmIntro('rift', () => travel('rift', { trial: { cls: c, tier } })), 300); },
-  latestSlot: () => { let best = null, bt = -1; for (const i of [1, 2, 3]) { const s = loadGame(i); if (s && (s.savedAt || s.created) > bt) { bt = s.savedAt || s.created; best = i; } } return best; },
+  latestSlot: () => { let best = null, bt = -1; for (const i of [1, 2, 3]) { const s = slotInfo(i); if (s && !s.damaged && (s.savedAt || 0) > bt) { bt = s.savedAt || 0; best = i; } } return best; },
+  exportSave: (slot) => exportSave(slot),
+  importSave: async (slot, text) => { try { const r = importSaveText(slot, text); return r.ok ? { ok: true } : { ok: false, error: r.error }; } catch (e) { return { ok: false, error: e.message }; } },
   canQuit: () => !!window.electronAPI,
   quit: () => { API.saveNow(); window.electronAPI?.quit(); },
   version: __APP_VERSION__,
@@ -123,7 +125,12 @@ const API = {
   reloadTavern: () => { const p = activeHero()?.pos.clone(); loadLocation('tavern'); if (p) G.party.forEach((h, i) => h.pos.copy(p).add(new THREE.Vector3(i * 0.8, 0.2, 0))); resetCamera(); },
   randomLegendary: () => randomLegendary(G.save.party.level, G.save.active.map((id) => G.save.members.find((m) => m.id === id).classId)),
   realms: REALMS,
-  saveNow: () => { if (G.save) { saveGame(G.slot); } },
+  saveNow: () => {
+    if (!G.save) return;
+    const r = saveGame(G.slot);
+    if (!r.ok && Date.now() - (G.saveWarnAt || 0) > 30000) { G.saveWarnAt = Date.now(); UI.toast(`Couldn't save (${r.error}). Your previous save is safe; free up disk space and the game will retry.`, 8000); }
+    return r;
+  },
   travel: (k) => travel(k),
   newGame: (slot, hero) => {
     G.slot = slot; G.save = newSave(null);
@@ -131,11 +138,20 @@ const API = {
     ensureWarband('emberwood', 2); ensureWarband('neon', 4); ensureWarband('asterion', 6);
     startPlaying('tavern');
   },
-  continueGame: (slot) => { const s = loadGame(slot); if (!s) return; G.slot = slot; G.save = s; startPlaying('tavern'); },
+  continueGame: (slot) => {
+    let r; try { r = loadGameDetailed(slot); } catch (e) { UI.errorBox('This save cannot be loaded', 'The save and all of its backups are damaged. Your other save slots are not affected. If you exported this save earlier, you can import it from the save-slot screen.'); return; }
+    if (!r) return; G.slot = slot; G.save = r.data; startPlaying('tavern');
+    if (r.note) setTimeout(() => UI.toast(r.note, 9000), 2500);
+  },
 };
 API.dialogues = buildDialogues(API);
 UI.api = API;
 G.saveNow = () => API.saveNow();
+// save on quit (desktop close button, or browser tab close)
+window.electronAPI?.onBeforeQuit(() => { try { if (G.mode === 'play') API.saveNow(); } finally { window.electronAPI.quitReady(); } });
+addEventListener('beforeunload', () => { if (G.mode === 'play' && G.save) API.saveNow(); });
+// pause when the window loses focus so the game never plays on without you
+addEventListener('blur', () => { if (G.mode === 'play' && !UI.blocking()) UI.pause(); });
 
 function startPlaying(loc) {
   Audio.unlock();
@@ -182,6 +198,38 @@ function titleBackdrop() {
   initEffects();
 }
 
+// ── crash boundary: every subsystem is isolated; errors are logged and the player is told what to do ──
+const errLog = []; let errBurst = [];
+function reportError(err, where = 'unknown') {
+  const msg = `[${where}] ${err && err.stack || err}`;
+  console.error(msg);
+  errLog.push({ t: Date.now(), msg }); if (errLog.length > 30) errLog.shift();
+  try { localStorage.setItem('forgotten-tavern-crashlog', JSON.stringify(errLog)); } catch (e) {}
+  window.electronAPI?.crashLog(msg);
+  const now = Date.now(); errBurst = errBurst.filter((t) => now - t < 5000); errBurst.push(now);
+  // one stray error is contained silently; a burst means the player's experience is affected, so we say so
+  if (errBurst.length >= 3 && G.mode === 'play') UI.crash(err);
+}
+function guard(where, fn) { try { fn(); } catch (err) { reportError(err, where); } }
+addEventListener('error', (e) => reportError(e.error || e.message, 'window'));
+addEventListener('unhandledrejection', (e) => reportError(e.reason, 'promise'));
+window.__crashLog = errLog;
+
+// ── Unstuck: remember recent safe spots (grounded, out of combat), and return the party to one on request ──
+const safeSpots = []; let safeT = 0;
+function trackSafeSpot(dt) {
+  safeT += dt; if (safeT < 1) return; safeT = 0;
+  const h = activeHero(); if (!h || h.downed || !h.grounded || G.combat.active) return;
+  safeSpots.push(h.pos.clone()); if (safeSpots.length > 8) safeSpots.shift();
+}
+API.unstuck = () => {
+  const target = (safeSpots.length > 3 ? safeSpots[safeSpots.length - 4] : safeSpots[0]) || G.realm?.spawn;
+  if (!target) return;
+  G.party.forEach((p, i) => { p.pos.copy(target).add(new THREE.Vector3((i % 2) * 1.2, 0.3, Math.floor(i / 2) * 1.2)); p.vel.set(0, 0, 0); p.knock.set(0, 0, 0); p.removeStatus('stun'); p.removeStatus('snare'); });
+  resetCamera(); UI.toast('Your party regroups at a safe spot.');
+};
+G.safeSpotsReset = () => { safeSpots.length = 0; };
+
 // ── keys ──
 addEventListener('keydown', (e) => {
   UI.handleKey(e);
@@ -220,11 +268,11 @@ function frame(now) {
     let scale = G.paused ? 0 : G.timeScale;
     if (FX.hitstop > 0) { FX.hitstop -= dtReal; scale *= 0.05; }
     const dt = dtReal * scale;
-    if (!G.paused && !UI.blocking()) updatePlayer(dt);
+    if (!G.paused && !UI.blocking()) guard('player', () => updatePlayer(dt));
     if (dt > 0) {
       G.time += dt;
       let slot = 0;
-      G.party.forEach((h, i) => { if (i !== G.activeIndex) updateCompanion(h, dt, slot++); });
+      G.party.forEach((h, i) => { if (i !== G.activeIndex) guard('companion', () => updateCompanion(h, dt, slot++)); });
       const me = activeHero(); const far2 = 75 * 75; frameNo++;
       for (const e of G.entities.slice()) {
         if (e.dead) continue;
@@ -234,17 +282,18 @@ function frame(now) {
           if (e.model) e.model.root.visible = d2 < 110 * 110;
           if (d2 > far2 && (frameNo + e.id) % 8 !== 0) continue;
         }
-        e.update(dt);
+        try { e.update(dt); } catch (err) { reportError(err, 'entity:' + (e.type || e.kind || e.classId)); if (e.team !== 'party' || e.isMinion) e.remove(); }
       }
-      updateEffects(dt); updateCombat(dt); updatePickups();
-      G.realm?.tick?.(dt);
+      guard('effects', () => updateEffects(dt)); guard('combat', () => updateCombat(dt)); guard('pickups', () => updatePickups());
+      guard('realm', () => G.realm?.tick?.(dt));
+      trackSafeSpot(dtReal);
       G.save.playTime += dt;
     }
-    G.world?.update();
-    ambience(dtReal);
-    updateCamera(dtReal);
-    UI.update(dtReal);
-    saveT += dtReal; if (saveT > 45) { saveT = 0; API.saveNow(); }
+    guard('world', () => G.world?.update());
+    guard('ambience', () => ambience(dtReal));
+    guard('camera', () => updateCamera(dtReal));
+    guard('ui', () => UI.update(dtReal));
+    saveT += dtReal; if ((saveT > 60 && !G.combat.active) || saveT > 180) { saveT = 0; API.saveNow(); }
   }
   updatePopupsFrame(dtReal);
   post.render(G.scene, G.camera, dtReal);

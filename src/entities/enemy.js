@@ -54,6 +54,10 @@ export class Enemy extends Actor {
   trait(t) { return this.captain && this.captain.traits.includes(t); }
   reveal(t) { if (this.captain && !this.captain.known.includes(t)) { this.captain.known.push(t); popText(this.head(), TRAITS[t].name.toUpperCase() + '!', 'info', { color: '#ff7a2a' }); emit('traitRevealed', { c: this.captain, t }); } }
   chooseTarget() {
+    if (this.waveBound) { // wave enemies always hunt the party, at any range
+      let best = null, bd = Infinity; for (const e of enemiesOf('enemy')) { if (e.untargetable || e.isMinion) continue; const d = e.pos.distanceTo(this.pos); if (d < bd) { bd = d; best = e; } }
+      if (best) return best;
+    }
     if (this.tauntedBy && !this.tauntedBy.dead && !this.tauntedBy.downed && !this.trait('iron_will')) return this.tauntedBy;
     let best = null, bs = -1;
     for (const e of enemiesOf('enemy')) {
@@ -74,6 +78,7 @@ export class Enemy extends Actor {
     if (this.captain) emit('captainEncounter', { enemy: this, c: this.captain });
   }
   onHurt(amt, src) {
+    this.lastHurtT = G.time;
     if (!this.aggro) this.alert();
     if (this.trait('overconfident') && G.time - this.born < 6) { this.hp -= amt * 0.5; this.reveal('overconfident'); }
     if (this.captain) {
@@ -151,8 +156,10 @@ export class Enemy extends Actor {
         break; }
     }
     if (this.blocked && this.grounded && this.moveInput.lengthSq() > 0.1) { this.vel.y = 10; this.blocked = false; }
-    // leash
-    if (this.pos.distanceTo(this.home) > 45 && !this.captain) { this.aggro = false; this.hp = this.maxHp; }
+    // leash (not for quest waves: they must always stay fightable)
+    if (this.pos.distanceTo(this.home) > 45 && !this.captain && !this.waveBound) { this.aggro = false; this.hp = this.maxHp; }
+    // a quest-wave enemy that is stuck far away (no damage for 30s, >25m from everyone) returns to the objective
+    if (this.waveBound && G.time - (this.lastHurtT || 0) > 30 && tgt.pos.distanceTo(this.pos) > 25) { this.pos.copy(this.waveCenter).add(V((Math.random() - 0.5) * 6, 1, (Math.random() - 0.5) * 6)); this.lastHurtT = G.time; }
     super.update(dt);
   }
   melee(tgt) {
