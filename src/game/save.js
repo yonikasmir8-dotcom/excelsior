@@ -60,6 +60,7 @@ export function validate(s) {
   s.nemesis = s.nemesis && Array.isArray(s.nemesis.captains) ? s.nemesis : { captains: [], nextId: 0, slain: [] };
   s.riftDepth = Math.floor(num(s.riftDepth, 0, 999, 0)); s.riftBest = Math.floor(num(s.riftBest, 0, 999, 0));
   s.stats = s.stats || {}; s.playTime = num(s.playTime, 0, 1e9, 0);
+  if (s.flags.prologue && s.flags.tutorial == null && !s.flags.inTutorial) s.flags.tutorial = 1; // saves from before the tutorial existed
   return s;
 }
 

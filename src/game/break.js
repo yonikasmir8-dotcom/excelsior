@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { G, activeHero } from '../core/state.js';
 import { Audio } from '../core/audio.js';
+import { emit } from '../core/events.js';
 import { UI } from '../ui/ui.js';
 import { nearestEnemy, TEAMUPS, triggerTeamUp, addStyle } from './combat.js';
 import { shake } from './effects.js';
@@ -58,5 +59,5 @@ function finish(choices) {
     }
   }
   addStyle(50);
-  setTimeout(() => { G.timeScale = 1; UI.breakDone(done.size); }, 300 * (done.size + 1) + 200);
+  setTimeout(() => { G.timeScale = 1; UI.breakDone(done.size); emit('breakDone'); }, 300 * (done.size + 1) + 200);
 }

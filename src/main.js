@@ -51,6 +51,8 @@ function newMember({ name, classId, look = {}, isPlayer = false, companionId = n
 
 // ── API used by dialogue + UI ──
 let lastDiceText = '';
+// a starting companion who complements your class, so you never enter a realm alone
+const STARTER = { fighter: 'anselm', sorcerer: 'brunhild', artificer: 'brunhild', cleric: 'brunhild', rogue: 'anselm', ranger: 'brunhild' };
 const API = {
   save: () => G.save,
   heal: () => { for (const h of G.party) { h.downed = false; h.hp = h.maxHp; } Audio.play('heal'); },
@@ -96,6 +98,9 @@ const API = {
   inParty: (cid) => { const m = G.save.members.find((x) => x.companionId === cid); return !!(m && G.save.active.includes(m.id)); },
   partyFull: () => G.save.active.length >= 4 && !G.save._justJoined,
   companionChat: (cid) => CHAT[cid] || ['...'],
+  starterName: () => COMPANIONS[STARTER[G.save.members[0].classId]].name,
+  recruitStarter: () => { const cid = STARTER[G.save.members[0].classId]; if (!API.inParty(cid)) API.recruit(cid); },
+  startTutorial: () => { if (G.save.flags.skipTutorial) { G.save.flags.tutorial = 1; G.save.flags.hud_dice = 1; G.save.flags.hud_break = 1; return; } G.save.flags.inTutorial = 1; setTimeout(() => travel('cellar'), 600); },
   recruit: (cid) => {
     const S = G.save; S._justJoined = false;
     let m = S.members.find((x) => x.companionId === cid);
@@ -134,7 +139,8 @@ const API = {
   travel: (k) => travel(k),
   newGame: (slot, hero) => {
     G.slot = slot; G.save = newSave(null);
-    const m = newMember({ ...hero, isPlayer: true }); G.save.members = [m]; G.save.active = [m.id];
+    const m = newMember({ ...hero, isPlayer: true }); G.save.members = [m]; G.save.active = [m.id]; G.save.leader = m.id;
+    if (hero.skipTutorial) G.save.flags.skipTutorial = 1;
     ensureWarband('emberwood', 2); ensureWarband('neon', 4); ensureWarband('asterion', 6);
     startPlaying('tavern');
   },
@@ -308,7 +314,7 @@ requestAnimationFrame(frame);
 boot();
 
 // ── performance: FPS overlay (avg, 1% low, worst frame) + first-launch quality detection + low-FPS advice ──
-const fpsEl = document.createElement('div'); fpsEl.id = 'fps'; fpsEl.hidden = !G.settings.fps; document.body.append(fpsEl);
+const fpsEl = document.createElement('div'); fpsEl.id = 'fps'; fpsEl.classList.toggle('hidden', !G.settings.fps); document.body.append(fpsEl);
 const frameTimes = []; let lastPerf = 0, perfLabelT = 0, lowFpsT = 0, lowFpsWarned = false;
 function perfTick(now) {
   if (lastPerf) { frameTimes.push(now - lastPerf); if (frameTimes.length > 600) frameTimes.shift(); }
@@ -318,7 +324,7 @@ function perfTick(now) {
     const sorted = frameTimes.slice().sort((a, b) => b - a); const avg = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
     const low1 = sorted.slice(0, Math.max(1, Math.floor(sorted.length / 100))).reduce((a, b) => a + b, 0) / Math.max(1, Math.floor(sorted.length / 100));
     G.perf = { fps: 1000 / avg, low1: 1000 / low1, worst: sorted[0] };
-    if (!fpsEl.hidden) fpsEl.textContent = `${G.perf.fps.toFixed(0)} fps  ·  1% low ${G.perf.low1.toFixed(0)}  ·  worst ${sorted[0].toFixed(1)} ms\n${(G.settings.quality || '').toUpperCase()}`;
+    if (!fpsEl.classList.contains('hidden')) fpsEl.textContent = `${G.perf.fps.toFixed(0)} fps  ·  1% low ${G.perf.low1.toFixed(0)}  ·  worst ${sorted[0].toFixed(1)} ms\n${(G.settings.quality || '').toUpperCase()}`;
     if (G.mode === 'play' && !G.paused && G.perf.fps < 40 && G.settings.quality !== 'low') { lowFpsT += 20; if (lowFpsT > 900 && !lowFpsWarned) { lowFpsWarned = true; UI.toast('The game is running below 40 fps. You can lower Graphics Quality in Settings → Graphics.', 8000); } } else lowFpsT = 0;
   }
 }

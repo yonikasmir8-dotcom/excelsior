@@ -65,7 +65,7 @@ export function applySettings() {
   }
   if (G.sun) { G.sun.castShadow = q.shadows > 0; if (q.shadows && G.sun.shadow.mapSize.x !== q.shadows) { G.sun.shadow.mapSize.set(q.shadows, q.shadows); G.sun.shadow.map?.dispose(); G.sun.shadow.map = null; } }
   if (G.camera) { G.camera.fov = S.fov; G.camera.updateProjectionMatrix(); }
-  const fps = document.getElementById('fps'); if (fps) fps.hidden = !S.fps;
+  const fps = document.getElementById('fps'); if (fps) fps.classList.toggle('hidden', !S.fps);
 }
 
 // First-launch auto-detect: pick a preset from the GPU string and a short frame-time sample.

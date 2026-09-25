@@ -46,6 +46,11 @@ export const UI = {
   fade(mid) { const f = $('#fade'); f.classList.add('on'); setTimeout(() => { try { mid(); } finally { setTimeout(() => f.classList.remove('on'), 120); } }, 380); },
   speedlines(gold = false) { const s = $('#speedlines'); if (!s) return; s.classList.toggle('gold', gold); s.classList.remove('on'); void s.offsetWidth; s.classList.add('on'); },
   flashCd(id) { const el = document.querySelector(`.ab[data-id="${id}"]`); if (el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); } },
+  tutorial(text, i, n) {
+    $('#tut')?.remove(); if (!text) return;
+    const el = h('div', { id: 'tut', class: 'panel' }, h('div', { class: 'step' }, `Lesson ${i} of ${n}`), h('div', { class: 'txt' }, text));
+    document.body.append(el);
+  },
   objective(text) { if (G.objectiveText && text !== G.objectiveText && G.save) setTimeout(() => G.saveNow?.(), 300); G.objectiveText = text; const o = $('#objective .t'); if (o) o.textContent = text; },
   grantXp(n) { UI.api.grantXp(n); },
   openModal(content, { onClose, wide } = {}) {
@@ -145,7 +150,8 @@ export const UI = {
           ),
         ),
         h('div', { style: 'display:flex;justify-content:flex-end;gap:10px;margin-top:14px' },
-          h('button', { class: 'btn', onclick: () => { const nm = ($('#heroName').value || '').trim() || randomName(); UI.closeModal(true); UI.api.newGame(slot, { name: nm, classId: cls, look: { ...(body != null ? { body } : {}), hair, skin } }); } }, 'Walk Through the Door'),
+          h('label', { style: 'display:flex;align-items:center;gap:8px;margin-right:auto;font-size:17px' }, h('input', { type: 'checkbox', id: 'skipTut' }), 'Skip the tutorial (for returning players)'),
+          h('button', { class: 'btn', onclick: () => { const nm = ($('#heroName').value || '').trim() || randomName(); const skip = !!$('#skipTut')?.checked; UI.closeModal(true); UI.api.newGame(slot, { name: nm, classId: cls, skipTutorial: skip, look: { ...(body != null ? { body } : {}), hair, skin } }); } }, 'Walk Through the Door'),
         ),
       );
     };
@@ -307,6 +313,8 @@ export const UI = {
     });
     const pc = abBox.querySelector('.pc'); if (pc) pc.textContent = S.potions;
     // dice
+    const F = S.flags; const showDice = !!(F.tutorial || F.hud_dice), showBreak = !!(F.tutorial || F.hud_break);
+    $('#dice').classList.toggle('hidden', !showDice); $('#diceHint').classList.toggle('hidden', !showDice); $('#meter').classList.toggle('hidden', !showBreak);
     const dice = $('#dice'); const key = C.dice.join(',') + '|' + C.sel + '|' + C.armed;
     if (dice._k !== key) {
       dice._k = key; dice.innerHTML = '';
@@ -345,6 +353,7 @@ export const UI = {
     while (box.children.length < want.length) box.append(h('div'));
     [...box.children].forEach((el, i) => {
       const w8 = want[i]; if (!w8) { el.style.display = 'none'; return; }
+      if (el._kind !== w8.kind) { el._kind = w8.kind; el._nm = null; el.textContent = ''; }
       V.copy(w8.pos).project(G.camera);
       let x = (V.x * 0.5 + 0.5) * w, y = (-V.y * 0.5 + 0.5) * hh; const behind = V.z > 1;
       if (w8.kind === 'threat') {

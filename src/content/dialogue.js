@@ -32,7 +32,8 @@ export function buildDialogues(A) {
       { t: 'I\'m ready.', go: 'end' },
     ] },
     what: { who: 'maren', text: 'Folk call it the Unraveller. Nobody who has seen it remembers what it looks like, which is its own kind of answer. Every realm it touches has a "thread", a Loom-Shard. Bring me those shards and maybe we can work out what it wants.', next: 'end' },
-    end: { who: 'maren', text: 'Press [P] to manage your party once you\'ve recruited someone. Emberwood, Neon Meridian and the Asterion are all open. Good luck, hero.', do: () => { A.flag('prologue', 1); A.unlockDoor('emberwood'); A.unlockDoor('neon'); A.unlockDoor('asterion'); A.questLog('Recruit companions, then pick a realm door on the north wall.'); }, end: true },
+    end: { who: 'maren', text: () => `${A.starterName()} has offered to watch your back. Before you go anywhere, though: goblins got into my cellar again. Clear them out and show me what you can do.`, do: () => { A.flag('prologue', 1); A.unlockDoor('emberwood'); A.unlockDoor('neon'); A.unlockDoor('asterion'); A.recruitStarter(); A.questLog('Recruit more companions (talk to the regulars), then pick a realm door on the north wall.'); }, next: 'go' },
+    go: { who: 'maren', text: () => A.save().flags.skipTutorial ? 'On second thoughts, you look like you know your way around a fight. The doors are yours.' : 'Down the stairs, then. Mind the barrels.', do: () => A.startTutorial(), end: true },
   };
   D.maren_hub = {
     n0: { who: 'maren', text: () => A.pick([

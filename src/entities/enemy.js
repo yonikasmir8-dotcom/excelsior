@@ -73,7 +73,7 @@ export class Enemy extends Actor {
     return best;
   }
   alert() {
-    if (this.aggro) return; this.aggro = true; startCombat();
+    if (this.aggro || this.ai === 'none') return; this.aggro = true; startCombat();
     for (const e of G.entities) if (e.team === 'enemy' && !e.aggro && e.pos.distanceTo(this.pos) < 14) { e.aggro = true; }
     if (this.captain) emit('captainEncounter', { enemy: this, c: this.captain });
   }
@@ -101,6 +101,7 @@ export class Enemy extends Actor {
     if (this.trait('iron_will')) { this.statuses.delete('stun'); this.statuses.delete('snare'); }
     if (this.trait('regenerator') && !this.has('burn') && !this.has('bleed')) this.hp = Math.min(this.maxHp, this.hp + this.maxHp * 0.012 * dt);
     if (this.isBoss) { this.bossUpdate?.(dt); super.update(dt); return; }
+    if (this.ai === 'none') { this.hp = Math.max(this.hp, 1); super.update(dt); return; } // training dummy: never dies, never attacks
     if (!this.canAct) { this.windup = 0; this.action = null; super.update(dt); return; }
     const tgt = this.aggro ? this.chooseTarget() : null;
     if (!this.aggro) {

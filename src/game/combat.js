@@ -108,7 +108,7 @@ export function attackRoll(att, tgt, T = {}) {
   const C = G.combat;
   if (att.team === 'party' && !att.isMinion && T.useFate !== false && C.armed !== null && C.dice[C.armed] !== undefined && att === activeHero()) {
     roll = C.dice[C.armed]; if (roll === 1 && G.party.some((h) => h.gearFlag?.('snake_eyes'))) roll = 20; C.dice.splice(C.armed, 1); C.sel = Math.min(C.sel, Math.max(0, C.dice.length - 1)); C.armed = null; fate = true;
-    popText(att.head(), `Fate · ${roll}`, 'fate');
+    popText(att.head(), `Fate · ${roll}`, 'fate'); emit('fateUsed', { roll });
   } else if (T.preRoll) roll = T.preRoll;
   else roll = d20();
   if (T.forced) roll = Math.max(roll, d20(), 10);
@@ -227,6 +227,7 @@ export function dealDamage(src, tgt, amt, opts = {}) {
 
 export function kill(tgt, src, opts = {}) {
   if (tgt.dead || tgt.downed) return;
+  if (tgt.ai === 'none') { tgt.hp = tgt.maxHp; return; }
   if (tgt.team === 'party' && !tgt.isMinion) {
     const saver = G.party.find((h) => h.t && h.t('second_chance') && !h.downed && !G.combat.secondChanceUsed);
     if (saver) { G.combat.secondChanceUsed = true; tgt.hp = 1; tgt.addStatus('invuln', 1.5); popText(tgt.head(), 'Second chance', 'heal'); return; }

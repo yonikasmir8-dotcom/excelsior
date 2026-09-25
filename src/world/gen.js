@@ -337,3 +337,23 @@ export function genLoom() {
   W.props = P;
   return { W, layout: { spawn: V(C, 9, C - 30), bossPos: V(C, 9, C + 4), center: V(C, 9, C), enemySpots: [], camps: [], collect: [], protect: () => true } };
 }
+
+// ── THE CELLAR: tutorial space beneath the Tavern ──
+export function genCellar() {
+  const { p, B } = PALETTES.tavern;
+  const S = 36, H = 12, F = 2;
+  const W = new VoxelWorld(S, H, S, p);
+  box(W, 2, 0, 2, S - 3, F - 1, S - 3, B.cobble);
+  hollow(W, 2, F, 2, S - 3, F + 5, S - 3, B.stone);
+  for (let x = 6; x < S - 4; x += 6) { column(W, x, 3, F, F + 5, B.beam); column(W, x, S - 4, F, F + 5, B.beam); }
+  // a low wall splits the room into a training half and a fighting half, with an opening
+  for (let x = 3; x < S - 3; x++) if (x < 15 || x > 20) { W.set(x, F, 18, B.stone); W.set(x, F + 1, 18, B.stone); }
+  const P = [];
+  for (let i = 0; i < 8; i++) P.push({ type: 'barrel', x: 4 + (i % 2) * 1.2, y: F, z: 5 + i * 1.3, r: 0 });
+  for (const [x, z] of [[4, 4], [S - 5, 4], [4, S - 5], [S - 5, S - 5], [17, 17], [S / 2, 8], [S / 2, S - 8]]) P.push({ type: 'torch', x, y: F + 3, z });
+  for (let i = 0; i < 5; i++) P.push({ type: 'crate', v: i % 2, x: S - 6 - (i % 2), y: F, z: 6 + i * 1.6 });
+  P.push({ type: 'bookshelf', x: 12, y: F, z: 3.3, r: 0 });
+  W.props = P;
+  const lights = [{ pos: V(10, F + 4, 10), color: 0xffa860, intensity: 22, dist: 20 }, { pos: V(26, F + 4, 10), color: 0xffa860, intensity: 22, dist: 20 }, { pos: V(18, F + 4, 27), color: 0xffa860, intensity: 26, dist: 22 }];
+  return { W, layout: { spawn: V(9, F, 8), moveTo: V(26, F, 9), dummies: [V(12, F, 13), V(24, F, 13)], arena: V(18, F, 27), exitDoor: V(9.5, F, 4), lights, protect: () => true } };
+}

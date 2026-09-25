@@ -79,12 +79,12 @@ export class Hero extends Actor {
     let cd = ab.cd * (ab.id === 'basic' ? (1 - this.t('quick_hands') * 0.08) : cdMod(this, ab.id));
     if (this.has('haste') && ab.id === 'basic') cd *= 0.7;
     this.cds[ab.id] = T.forced ? Math.max(this.cds[ab.id] || 0, 0) : cd;
-    if (ab.id !== 'basic') noteAbility(this, ab.id);
+    if (ab.id !== 'basic') { noteAbility(this, ab.id); if (this === G.party[G.activeIndex]) emit('abilityCast', { id: ab.id }); }
     return true;
   }
   basicAbility() { return { id: 'basic', ...this.cls.basic }; }
   // class mechanic on RMB: press, or hold (start/tick/end)
-  mechPress(T) { const m = this.cls.mechanic; if (!m || !this.canAct) return; if (m.hold) { if (!this.mechHeld) { this.mechHeld = true; m.start(this, T); } } else if ((this.cds.mech || 0) <= 0) { if (m.press(this, T) !== false) this.cds.mech = m.cd ?? 0.4; } }
+  mechPress(T) { const m = this.cls.mechanic; if (!m || !this.canAct) return; if (this === G.party[G.activeIndex]) emit('mechanicUsed'); if (m.hold) { if (!this.mechHeld) { this.mechHeld = true; m.start(this, T); } } else if ((this.cds.mech || 0) <= 0) { if (m.press(this, T) !== false) this.cds.mech = m.cd ?? 0.4; } }
   mechHold(dt, T) { const m = this.cls.mechanic; if (m?.hold && this.mechHeld) { if (!this.canAct) { this.mechRelease(T); return; } m.tick(this, dt, T); } }
   mechRelease(T) { const m = this.cls.mechanic; if (m?.hold && this.mechHeld) { this.mechHeld = false; m.end(this, T); } }
   update(dt) {

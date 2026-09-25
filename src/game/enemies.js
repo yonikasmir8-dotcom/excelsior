@@ -1,5 +1,8 @@
 // Enemy archetypes per realm. Behaviour is chosen by `ai`; everything telegraphs before it hurts.
 export const ENEMY_TYPES = {
+  // tutorial
+  dummy:    { name: 'Training Dummy', ai: 'none', hp: 400, dmg: '1d1', ac: 8, speed: 0, xp: 0, model: { kind: 'humanoid', colors: { skin: 0xc8a860, body: 0xb09050, legs: 0x8a7040, accent: 0x6a4a2a, hair: 0xd8c070 }, extras: ['harness'] } },
+  cellarRat:{ name: 'Cellar Goblin', ai: 'melee', hp: 14, dmg: '1d4', ac: 9, speed: 4.5, xp: 15, model: { kind: 'humanoid', scale: 0.7, colors: { skin: 0x6a9a3a, body: 0x5a3a2a, legs: 0x3a2a1a, accent: 0x8a6a3a, eye: 0xffe040 }, weapon: 'club', hat: 'bandana' } },
   // ── Emberwood (fantasy) ──
   goblin:   { name: 'Hollow Goblin', ai: 'melee', hp: 30, dmg: '1d6+2', ac: 11, speed: 5.5, xp: 12, model: { kind: 'humanoid', scale: 0.75, colors: { skin: 0x6a9a3a, body: 0x5a3a2a, legs: 0x3a2a1a, accent: 0x8a6a3a, eye: 0xffe040 }, weapon: 'club', hat: 'bandana' } },
   archer:   { name: 'Bramble Archer', ai: 'ranged', hp: 24, dmg: '1d8+1', ac: 12, speed: 5, xp: 14, proj: 0xa0d060, model: { kind: 'humanoid', scale: 0.9, colors: { skin: 0x8aa060, body: 0x3a5a2a, legs: 0x2a3a1a, accent: 0x6a4a2a, eye: 0xffe040 }, weapon: 'bow', hat: 'hood', extras: ['quiver'] } },

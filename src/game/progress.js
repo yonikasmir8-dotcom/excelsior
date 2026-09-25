@@ -65,7 +65,7 @@ const TIPS = {
   lowdice: 'Tip: press Z to SACRIFICE a low Fate Die. The lower the die, the more Break charge you get.',
   down: 'A hero is down! Stand next to them and hold F to revive, or let a companion do it.',
 };
-export function tip(k) { const S = G.save; if (!S || S.flags['tip_' + k]) return; S.flags['tip_' + k] = 1; UI.toast('💡 ' + TIPS[k], 7000); }
+export function tip(k) { const S = G.save; if (!S || S.flags['tip_' + k] || G.location === 'cellar') return; S.flags['tip_' + k] = 1; UI.toast('💡 ' + TIPS[k], 7000); }
 
 export function initProgress() {
   on('combatStart', () => { tip('combat'); if (G.save?.stats.kills > 12) tip('lowdice'); });

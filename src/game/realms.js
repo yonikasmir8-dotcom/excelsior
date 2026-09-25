@@ -5,14 +5,14 @@ import { G } from '../core/state.js';
 import { Rng } from '../core/rng.js';
 import { Audio } from '../core/audio.js';
 import { emit, on } from '../core/events.js';
-import { genTavern, genEmberwood, genNeon, genAsterion, genRift, genLoom } from '../world/gen.js';
+import { genTavern, genEmberwood, genNeon, genAsterion, genRift, genLoom, genCellar } from '../world/gen.js';
 import { Hero } from '../entities/hero.js';
 import { Enemy } from '../entities/enemy.js';
 import { NPC } from '../entities/npc.js';
 import { NPCS, COMPANIONS } from '../content/npcs.js';
 import { REALM_POOLS } from './enemies.js';
 import { spawnBoss } from './bosses.js';
-import { clearEffects, initEffects, burst, popText, ring, zone, timed } from './effects.js';
+import { clearEffects, initEffects, burst, popText, ring, zone, timed, telegraph } from './effects.js';
 import { captainsFor, ensureWarband } from './nemesis.js';
 import { summonPet, CLASSES } from './classes.js';
 import { newCombatState, endCombat } from './combat.js';
@@ -28,6 +28,7 @@ export const REALMS = {
   neon: { name: 'Neon Meridian', kind: 'neon', style: 'neon', music: 'neon', sky: [0x0a1024, 0x3a3a6a], horizon: 0xb04a7a, fog: [0x2a2a4a, 50, 190], sun: 0xb0d0ff, sunI: 1.4, amb: 0x8a90c8, hemi: 1.3, cloud: 0x6a7aa0, storm: true, sunHeight: 0.3, base: 3, genre: 'Superhero', blurb: 'A city where the heroes are being erased from memory.' },
   asterion: { name: 'The Asterion', kind: 'asterion', style: 'asterion', music: 'asterion', sky: [0x02040c, 0x0a1428], horizon: 0x1a2a4a, fog: [0x08101c, 60, 200], sun: 0xd0e8ff, sunI: 2.2, amb: 0x6a80a0, hemi: 1.2, stars: true, nebula: ['#ff4a9a', '#4ad8ff'], cloud: 0x0a1428, sunHeight: 0.2, base: 5, genre: 'Sci-Fi', blurb: 'A derelict ship whose AI is rewriting its sleeping crew.' },
   rift: { name: 'Rift', kind: 'rift', style: 'rift', music: 'rift', sky: [0x2a0a3a, 0xff6a9a], fog: [0x4a1a5a, 45, 160], sun: 0xffe8f0, sunI: 2.4, amb: 0xa89ac0, stars: true, base: 2, genre: 'Everything', blurb: 'Torn places where genres bleed together. Endless, stranger with depth.' },
+  cellar: { name: 'The Tavern Cellar', kind: 'tavern', style: 'tavern', music: 'tavern', sky: [0x0a0806, 0x1a120c], fog: [0x1a120c, 20, 60], sun: 0xffc890, sunI: 0.3, amb: 0x8a7a6a, hemi: 0.9 },
   loom: { name: 'The Loom', kind: 'loom', style: 'loom', music: 'loom', sky: [0x5a8ad8, 0xffe8f0], horizon: 0xffffff, fog: [0xe8e0f0, 60, 200], sun: 0xfff4e0, sunI: 3, amb: 0xd0c8e8, cloud: 0xffffff, storm: true, sunHeight: 0.3, base: 10, genre: 'Finale', blurb: 'Where every thread meets.' },
 };
 
@@ -83,7 +84,7 @@ export function clearLocation() {
   G.interactables = []; G.markers = []; G.pickups = []; G.waves = []; G.safeSpotsReset?.();
   G.party = [];
   if (G.scriptOff) { G.scriptOff.forEach((f) => f()); G.scriptOff = null; }
-  UI.bossBar(null);
+  UI.bossBar(null); UI.tutorial(null);
 }
 
 export function buildParty(spawn) {
@@ -110,6 +111,7 @@ export function loadLocation(id, opts = {}) {
   else if (id === 'neon') gen = genNeon(22);
   else if (id === 'asterion') gen = genAsterion(33);
   else if (id === 'loom') gen = genLoom();
+  else if (id === 'cellar') gen = genCellar();
   else gen = genRift(opts.seed || (1000 + S.riftDepth * 7919 + Math.floor(Math.random() * 1000)));
   const { W, layout } = gen;
   G.world = W; G.layout = layout; W.buildAll(); G.scene.add(W.group);
@@ -144,6 +146,7 @@ export function loadLocation(id, opts = {}) {
   G.realm.spawn = spawn;
   // location content
   if (id === 'tavern') setupTavern(layout);
+  else if (id === 'cellar') setupCellar(layout);
   else setupRealm(id, layout, opts);
   UI.enterLocation(G.realm);
   emit('locationLoaded', { id });
@@ -502,3 +505,40 @@ function setupLoom(L) {
   R.markers = () => [L.bossPos];
   refreshObjective('loom');
 }
+
+// ───────────────────────────── TUTORIAL (the cellar) ─────────────────────────────
+// Teaches one system at a time. Nothing appears on the HUD until it has been taught.
+function setupCellar(L) {
+  const S = G.save; const R = G.realm; const hero = G.party[G.activeIndex];
+  const K = (a) => keyLabel(a);
+  const mech = hero.cls.mechanic;
+  const mechHow = { fighter: `Hold ${K('mechanic')} to raise your guard. Raise it just as an attack lands to Parry.`, sorcerer: `Press ${K('mechanic')} to change your attunement between Fire, Frost and Storm.`, artificer: `Place a Blast Rune with ${K('ab2')} first, then press ${K('mechanic')} to Detonate it.`, cleric: `Press ${K('mechanic')} to tether yourself to an ally.`, rogue: `Press ${K('mechanic')} to Tumble behind the dummy.`, ranger: `Hold ${K('mechanic')} to draw your bow, then release to loose an Aimed Shot.` }[hero.classId];
+  const dummies = L.dummies.map((p) => { const e = new Enemy('dummy', p.clone(), 1); e.yaw = Math.PI; return e; });
+  const steps = [
+    { text: `Move with ${K('forward')} ${K('left')} ${K('back')} ${K('right')} and look with the mouse. Walk to the glowing marker.`, marker: () => [L.moveTo], done: () => hero.pos.distanceTo(L.moveTo) < 2.5 },
+    { text: `Press ${K('dash')} to dodge. Dodging makes you briefly untouchable. Dodge out of the red rune circle before it erupts.`, marker: () => [hero.pos], start: () => { const loop = () => { if (R.tutStep !== 1 || G.location !== 'cellar') return; telegraph(hero.pos.clone(), 2.5, 2.2, 0xff4030, (q) => { for (const h of G.party) if (h.pos.distanceTo(q) < 2.5 && !h.has('dodge')) popText(h.head(), 'Too slow — try again', 'miss'); }); setTimeout(loop, 2600); }; loop(); }, on: 'dashFx' },
+    { text: `Attack the training dummy with ${K('attack')}. Every attack rolls a d20 against armour; a natural 20 is a critical hit.`, marker: () => dummies.map((d) => d.pos), count: 4, on: 'damage', filter: ({ src, tgt }) => src === hero && tgt.type === 'dummy' },
+    { text: `${mech.name} is your class signature. ${mechHow}`, marker: () => dummies.map((d) => d.pos), on: 'mechanicUsed', delayDone: hero.classId === 'artificer' ? 'needRune' : null },
+    { text: `Use an ability: ${K('ab1')} (${hero.cls.abilities[0].name}). Abilities have cooldowns shown on your action bar.`, marker: () => dummies.map((d) => d.pos), on: 'abilityCast' },
+    { text: `Goblins got into the cellar! Every fight begins by rolling your FATE DICE, a hand of d20s. Scroll to pick one, press ${K('dieArm')} to arm it, and your next attack uses that roll. Save high rolls for the moments that matter.`, marker: () => [L.arena], hud: 'dice', start: () => { for (let i = 0; i < 3; i++) { const e = new Enemy('cellarRat', L.arena.clone().add(V(i * 2 - 2, 0.2, 0)), 1); e.aggro = true; e.waveBound = true; e.waveCenter = L.arena.clone(); } }, on: 'fateUsed' },
+    { text: `Clear out the goblins. Your companion fights alongside you.`, marker: () => G.entities.filter((e) => e.type === 'cellarRat' && !e.dead).map((e) => e.pos), done: () => !G.entities.some((e) => e.type === 'cellarRat' && !e.dead) },
+    { text: `Your INITIATIVE BREAK meter fills as you fight. When it is full, press ${K('break')}: time freezes, you choose one action for every hero, and they unleash it as a combo. Try it on the dummy.`, hud: 'break', marker: () => dummies.map((d) => d.pos), start: () => { G.combat.meter = 100; import('./combat.js').then((m) => m.startCombat()); }, on: 'breakDone' },
+    { text: `That's everything you need. Head back up the stairs to Maren.`, marker: () => [L.exitDoor], done: () => false, final: true },
+  ];
+  R.tutStep = 0; R.tutCount = 0;
+  const begin = (i) => { R.tutStep = i; R.tutCount = 0; const st = steps[i]; if (st.hud) S.flags['hud_' + st.hud] = 1; UI.tutorial(st.text, i + 1, steps.length); Audio.play('quest'); st.start && st.start(); };
+  const advance = () => { if (R.tutStep < steps.length - 1) begin(R.tutStep + 1); };
+  for (const ev of ['dashFx', 'damage', 'mechanicUsed', 'abilityCast', 'fateUsed', 'breakDone']) onScript(ev, (d) => {
+    const st = steps[R.tutStep]; if (!st || st.on !== ev) return;
+    if (st.filter && !st.filter(d || {})) return;
+    if (st.delayDone === 'needRune' && !(hero.runes || []).length && !G.entities.some((e) => e.isMinion && e.owner === hero)) { UI.toast(`Place a rune with ${K('ab2')} first, then Detonate.`); return; }
+    R.tutCount++; if (R.tutCount >= (st.count || 1)) setTimeout(advance, 600);
+  });
+  R.tick = () => { const st = steps[R.tutStep]; if (st && st.done && st.done()) advance(); };
+  R.markers = () => (steps[R.tutStep]?.marker?.() || []);
+  R.objectives = ['Learn the basics in the cellar.'];
+  G.interactables.push({ pos: L.exitDoor, radius: 2.6, label: () => R.tutStep >= steps.length - 1 ? 'Climb back up to the Tavern' : 'Skip the tutorial and return upstairs', use: () => { S.flags.tutorial = 1; S.flags.inTutorial = 0; for (const k of ['dice', 'break']) S.flags['hud_' + k] = 1; UI.tutorial(null); travel('tavern'); } });
+  begin(0);
+  UI.objective('Learn the basics in the cellar.');
+}
+function keyLabel(a) { const c = G.settings.keys[a]; return `[${(c || '').startsWith('Mouse') ? ['Left mouse', 'Middle mouse', 'Right mouse'][+c.slice(5)] : (c || '').replace(/^Key/, '').replace('Left', '').replace('Right', '')}]`; }
