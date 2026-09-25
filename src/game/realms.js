@@ -245,7 +245,9 @@ function setupRealm(id, L, opts) {
   if (R.state.grav) G.party.forEach((h) => (h.gravScale = R.state.grav));
   // enemies
   const heavy = id === 'loom' ? 0 : 1;
-  (L.enemySpots || []).forEach((p, i) => { if (Math.random() < 0.8 * heavy) spawnGroup(p, 3 + Math.floor(Math.random() * 3), lvl, R.pool); });
+  // density budget: ~50–70 enemies per realm keeps fights readable (GDD §7)
+  const spots = (L.enemySpots || []).slice().sort(() => Math.random() - 0.5).slice(0, 18);
+  spots.forEach((p) => { if (Math.random() < 0.85 * heavy) spawnGroup(p, 2 + Math.floor(Math.random() * 3), lvl, R.pool); });
   // captains / nemeses
   if (id !== 'loom') {
     ensureWarband(id === 'rift' ? 'rift' : id, lvl);
